@@ -1,143 +1,145 @@
-######################################
+###########################################
 #
-# DBM.py 
+# dbms.py 
 #
 # Difference bound matrices domain
 #
-######################################
+# (C) 2016, Andreas Gaiser
+###########################################
+
 
 import numbers
-import abc
-import copy
-from graph_algorithms import WeightedGraph
+import dbm
 
-class DBM(WeightedGraph):
+class DBMFactory():
 
-    def __init__(self):
-        self.nodes = []
-        self.outgoings = {}
-        self.incomings = {}
+    #
+    # Private methods
+    #
 
-    def copy(self):
-        result = DBM()
-        result.nodes = self.nodes[:]
-        result.outgoings = {}
-        for node in self.outgoings:
-            result.outgoings[node] = []
-            for (weight, target) in self.outgoings[node]:
-                result.outgoings[node].append((weight, target))
-        result.incomings = {}
-        for node in self.incomings:
-            result.incomings[node] = []
-            for (source, weight) in self.incomings[node]:
-                result.incomings[node].append((source, weight))
-        print result.to_string()
+    def __init__(self, DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE):
+        self.variables = {}
+        self.DEFAULT_MAX_VALUE = DEFAULT_MAX_VALUE
+        self.DEFAULT_MIN_VALUE = DEFAULT_MIN_VALUE
+        self.constants = []
+        
+    def _intersect(self, tuple1, tuple2):
+        (l1, r1) = tuple1
+        (l2, r2) = tuple2
+        if r1 < l1 or r2 < l2:
+            return None
+        return (max(l1, l2), min(r1, r2))
+        
+    def _interval(self, element, variable):
+        if element is None:
+            return None
+        if variable in element:
+            return element[variable]
+        else:
+            return self.variables[variable]
+
+    def _normalize(self, element):
+        if element is None:
+            return None
+        return element.find_shortest_paths()
+ 
+    def _copy(self, element):
+        if element is None:
+            return None
+        result = {}
+        for variable in element:
+            result[variable] = element[variable]
         return result
 
-    def set_weight(self, source, weight, target):
-        if source not in self.nodes:
-            self.nodes.append(source)
-            self.outgoings[source] = []
-            self.incomings[source] = []
-        if target not in self.nodes:
-            self.nodes.append(target)
-            self.outgoings[target] = []
-            self.incomings[target] = []
-        found = False
-        for (existing_weight, existing_target) in self.outgoings[source]:
-            if existing_target == target:
-                self.outgoings[source].remove((existing_weight, existing_target))
-                if weight is not None:
-                    self.outgoings[source].append((weight, target))
-                found = True
-                break
-        if not found and weight is not None:
-            self.outgoings[source].append((weight, target))
-        found = False
-        for (existing_source, existing_weight) in self.incomings[target]:
-            if existing_source == source:
-                self.incomings[target].remove((existing_source, existing_weight))
-                if weight is not None:
-                    self.incomings[target].append((source, weight))
-                found = True
-                break
-        if not found and weight is not None:
-            self.incomings[target].append((source, weight))
+    def _is_in(self, scalar, element):
+        if element is None:
+            return False
+        (l, r) = element
+        return (l <= scalar and r >= scalar)
+            
+    #
+    # Public methods
+    #
     
-    def all_nodes(self):
-        return self.nodes
+    def add_var(self, variable, max_val, min_val):
+        self.variables[variable] = (max_val, min_val)
+        
+    def get_top(self):
+        return dbm.DBM()
 
-    def incomings(self, node):
-        return self.incomings[node]
-    
-    def outgoings(self, node):
-        return self.outgoings[node]
-
-    def get_weight(self, source, target):
-        ''' Get the weight of the edge between source and target,
-        None for infinite weight. '''
-        if source not in self.nodes or target not in self.nodes:
-            return None
-        for (weight, existing_target) in self.outgoings[source]:
-            if existing_target == target:
-                return weight
+    def get_bot(self):
         return None
 
-    def exists_negative_cycle(self):
-        # add an artificial node None
-        distance = {}
-        predecessor = {}
-        # Use Bellman-Ford
-        for node in self.nodes[:]:
-            self.set_weight(None, 0, node)
-            # init dicts
-            distance[node] = None
-            predecessor[node] = None
-        distance[None] = 0
-        i = len(self.nodes)-1
-        while(i > 0):
-            # iterate all edges
-            for source in self.nodes:
-                for (weight, target) in self.outgoings[source]:
-                    if weight is None:
-                        continue # to be sure...
-                    source_distance = distance[source]
-                    target_distance = distance[target]
-                    if source_distance is None:
-                        continue
-                    elif (target_distance is None
-                          or source_distance + weight < target_distance):
-                        distance[target] = distance[source] + weight
-                        predecessor[target] = source
-            i -= 1
-        # check for cycles
-        negative_cycle = False
-        for source in self.nodes:
-            for (weight, target) in self.outgoings[source]:
-                source_distance = distance[source]
-                target_distance = distance[target]
-                if source_distance is None:
-                    continue
-                elif (target_distance is None
-                      or source_distance + weight < target_distance):
-                    print "Negative cycle existing."
-                    negative_cycle = True
-                    break
-        for node in self.nodes[:]:
-            if node is not None:
-                self.set_weight(None, None, node)
-        return negative_cycle
+    def add_constant(self, constant):
+        self.constants.append(constant)
+        self.constants = sorted(self.constants)
+    
+    def is_subseteq(self, element1, element2):
+        if element1 is None:
+            return True
+        if element2 is None:
+            return False
+        s1 = self._normalize(element1)
+        s2 = self._normalize(element2)
+        common_vars = []
+        for v in self.variables():
+            if v in s1.all_nodes() or v in s2.all_nodes():
+                common_vars.append(v)
+        for v1 in common_vars:
+            for v2 in common_vars:
+                if s1.get_weight(v1, v2) > s2.get_weight(v1, v2):
+                    return False
+        return True
                 
-    def find_shortest_paths(self):
-        # Return a dbm with shortest path as entries
-        sp = self.copy()
-        i = 1
+    def is_eq(self, element1, element2):
+        if element1 is None:
+            return element2 is None
+        
+        s1 = self._normalize(element1)
+        s2 = self._normalize(element2)
+        common_vars = []
+        for v in self.variables():
+            if v in s1.all_nodes() or v in s2.all_nodes():
+                common_vars.append(v)
+        for v1 in common_vars:
+            for v2 in common_vars:
+                if s1.get_weight(v1, v2) != s2.get_weight(v1, v2):
+                    return False
+        return True
+        
+    def union(self, element1, element2):
+        result = dbm.DBM()
 
-        def add_weights(w1, w2):
-            if w1 is None or w2 is None:
+        if element1 is None:
+            return element2.copy()
+        elif element2 is None:
+            return element1.copy()
+
+        def max_extended(m1, m2):
+            if m1 is None or m2 is None:
                 return None
-            else:
-                return w1 + w2
+            return max(m1, m2)
+
+        common_vars = []
+        for v in self.variables():
+            if v in s1.all_nodes() or v in s2.all_nodes():
+                common_vars.append(v)
+        for v1 in common_vars:
+            for v2 in common_vars:
+                result.set_weight(
+                    v1,
+                    max_extended(element1.get_weight(v1, v2),
+                                 element2.get_weight(v1, v2)),
+                    v2)
+        return result
+
+    def intersect(self, element1, element2):
+        result = dbm.DBM()
+
+        if element1 is None:
+            return element2.copy()
+        elif element2 is None:
+            return element1.copy()
 
         def min_extended(m1, m2):
             if m1 is None:
@@ -145,32 +147,214 @@ class DBM(WeightedGraph):
             elif m2 is None:
                 return m1
             return min(m1, m2)
+
+        common_vars = []
+        for v in self.variables():
+            if v in s1.all_nodes() or v in s2.all_nodes():
+                common_vars.append(v)
+        for v1 in common_vars:
+            for v2 in common_vars:
+                result.set_weight(
+                    v1,
+                    min_extended(element1.get_weight(v1, v2),
+                                 element2.get_weight(v1, v2)),
+                    v2)
+        return result
+
+    def is_literal(self, value):
+        return isinstance(value, numbers.Number) 
+    
+    def op_load_constant(self, element, target_var, constant):
+        '''
+        strongest postcondition of
+        variable := constant
+        '''
+        if element is None:
+            return None
+        result = self._copy(element)
+        # todo: what if constant not in range(variable)?
+        result[target_var] = (constant, constant)
+        return self._normalize(result)
+
+    def op_binary(self,
+                  element,
+                  operator,
+                  target_var,
+                  op1,
+                  op2):
+        if element is None:
+            return None
+        if self.is_literal(op1):
+            i1 = (op1, op1)
+        else:
+            i1 = self._interval(element, op1) 
+        if self.is_literal(op2):
+            i2 = (op2, op2)
+        else:
+            i2 = self._interval(element, op2)
+        return self.op_binary_intervals(element,
+                                        operator,
+                                        target_var,
+                                        i1,
+                                        i2)
+    
+            
+    def op_binary_intervals(self,
+                            element,
+                            operator,
+                            target_var,
+                            interval1,
+                            interval2):
+        '''
+        strongest postcondition of
+        variable := i1 (+) i2
+        '''
+        if element is None:
+            return None
+        result = self._copy(element)
+        # todo: what if result not in range?
+        (l1, r1) = interval1
+        (l2, r2) = interval2
+        cl = None
+        cr = None
+        if operator == '*':
+            # maybe switch (negative numbers)
+            (cl, cr) = (min(l1*l2, r1*r2, l1*r2, l2*r1),
+                        max(l1*l2, r1*r2, l1*r2, l2*r1))
+        elif operator == '+':
+            (cl, cr) = (l1+l2, r1+r2)
+        elif operator == '-':
+            (cl, cr) = (l1-l2, r2-l2)
+        elif operator == '%':
+            # i2 contains 1 integer
+            if r2-l2 == 0 and r2 == 0:
+                print "Division by zero!"
+                return None
+            elif r2-l2 == 0 and r1-l1 == 0:
+                (cl, cr) = (r1 % r2, r1 % r2)
+            else:
+                max_el = max(abs(l2), abs(r2))-1
+                if l1 >= 0:
+                    (cl, cr) = (0, max_el)
+                else:
+                    (cl, cr) = (-max_el, max_el)
+                    
+            if l2 <= 0 and 0 <= r2:
+                print "Possible Division by zero!"
+        else:
+            print 'Wrong operator!'
+        if cl is not None or cr is not None:
+            result[target_var] = (cl, cr)
+        else:
+            result[target_var] = self.variables[target_var]
+        return self._normalize(result)
+
+    
+    def cond_binary(self,
+                    element,
+                    operator,
+                    op1,
+                    op2):
+        '''
+        strongest postcondition of
+        (variable (=) variable)
+        '''
+        if element is None:
+            return None
+
+        if operator == '>' :
+            return self.cond_binary(element, '<', op2, op1)
+        elif operator == '>=' :
+            return self.cond_binary(element, '<=', op2, op1)
+        result = self._copy(element)
+        i1 = None
+        i2 = None
+        left_var = None
+        right_var = None
+        if self.is_literal(op1):
+            i1 = (op1, op1)
+        else:
+            i1 = self._interval(element, op1)
+            left_var = op1
+        if self.is_literal(op2):
+            i2 = (op2, op2)
+        else:
+            i2 = self._interval(element, op2)
+            right_var = op2
+            
+        (l1, r1) = i1
+        (l2, r2) = i2
         
-        for node in self.nodes:
-            for source in self.nodes:
-                for target in self.nodes:
-                    distance = min_extended(
-                        sp.get_weight(source, target),
-                        add_weights(sp.get_weight(source, node),
-                                    sp.get_weight(node, target)))
-                    sp.set_weight(source,
-                                  distance,
-                                  target)
-        # adjust diagonals
-        for node in self.nodes:
-            sp.set_weight(node, 0, node)
-        return sp           
+        if operator == '==':
+            buffer = self._intersect((l1, r1), (l2, r2))
+            if buffer is None:
+                return None
+        elif operator == '!=':
+            if op1 == op2:
+                return None
+            if (l1 - r1) == 0 and (l2-r2) == 0 and (l1 == l2):
+                return None
+
+        new_i1 = None
+        new_i2 = None
+        if operator == '<=':
+            if r2 < l1:
+                return None
+            new_i1 = (l1, min(r1, r2))        
+            new_i2 = (max(l1, l2), r2)
+        elif operator == '<':
+            if op1 == op2:
+                return None
+            if r2 <= l1:
+                return None
+            new_i1 = (l1, min(r1, r2-1))        
+            new_i2 = (max(l1, l2+1), r2)
+        else:
+            print 'Unknown operator: %s ' % operator
+            
+        if new_i1 and left_var:
+            result[left_var] = new_i1
+        if new_i2 and right_var:
+            result[right_var] = new_i2
         
-    def to_string(self):
-        ''' Get a textual representation of the DBM graph. '''
-        result = ''
-        for node in self.nodes:
-            if node is None:
-                continue # private node
-            result += 'node: %s\n' % node
-            for (weight, target) in self.outgoings[node]:
-                result += '%s -(%s)-> %s\n' % (node, weight, target)
-            for (source, weight) in self.incomings[node]:
-                result += '%s <=(%s)= %s\n' % (node, weight, source)
+        return self._normalize(result)
+    
+    def widen(self, element1, element2):
+        result = dbm.DBM()
+                
+        if element1 is None:
+            return element2.copy()
+        elif element2 is None:
+            return element1.copy()
+
+        common_vars = []
+        for v in self.variables():
+            if v in s1.all_nodes() or v in s2.all_nodes():
+                common_vars.append(v)
+        for v1 in common_vars:
+            for v2 in common_vars:
+                val1 = element1.get_weight(v1, v2)
+                val2 = element2.get_weight(v1, v2)
+                if val1 is None or val2 is None or val2 > val1:
+                    result.set_weight(v1, None, v2)
+                else:
+                    result.set_weight(v1, val2, v2)
         return result
     
+    def to_string(self, element):
+        if element is None:
+            return '<BOT>'
+        elif len(element) == 0:
+            return '<TOP>'
+        result = '['
+        keys_sorted = sorted(element.keys())
+        for variable in keys_sorted:
+            result += ('%s in [%s, %s], '
+                       % (variable,
+                          element[variable][0],
+                          element[variable][1]))
+        if result.endswith(', '):
+            result = result[:-2]
+        result += ']'
+        return result
+
