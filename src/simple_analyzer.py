@@ -1,6 +1,12 @@
+##############################
 #
+# interpreter.py 
 #
+# Actual interpreter
 #
+# (C) 2016, Andreas Gaiser
+##############################
+
 
 import boxes
 
@@ -144,14 +150,11 @@ class Method_CFG():
                 larger_or_equal = dom.is_subseteq(values[loc], new_values[loc])
                 smaller_or_equal = dom.is_subseteq(new_values[loc], values[loc])
                 is_increasing = larger_or_equal and not smaller_or_equal
+                print "PF reached: %s, %s, %s" % (loc, larger_or_equal, smaller_or_equal)
                 postfixpoint_reached = postfixpoint_reached and not is_increasing
-            #print "POST WIDEN:"
-            #for loc in self.control_locs:
-            #    print('"%s" : "%s"' % (loc, dom.to_string(new_values[loc])))
-            
-            if postfixpoint_reached:
-                for loc in self.control_locs:
-                    print('"%s" : "%s"' % (loc, dom.to_string(new_values[loc])))
+            #if postfixpoint_reached:
+            #    for loc in self.control_locs:
+            #        print('"%s" : "%s"' % (loc, dom.to_string(new_values[loc])))
 
             return (postfixpoint_reached, new_values)
 
@@ -163,127 +166,7 @@ class Method_CFG():
                 = iterate(values,
                           iterations > iterations_without_widening)
             iterations += 1
+        for loc in values:
+            print('"%s" : "%s"' % (loc, dom.to_string(values[loc])))
+            print "**************************"
             
-if __name__ == '__main__':
-
-    boxes_factory = boxes.BoxDomainFactory(-128, 128)
-
-    # example bounds001.c
-    
-    boxes_factory.add_var('index', -65536, 65536)
-    boxes_factory.add_var('length', -65536, 65536)
-    boxes_factory.add_var('access', -65536, 65536)
-
-    def bounds_001():
-    
-        cfg = Method_CFG(1, 5)
-        cfg.add_control_loc(2)
-        cfg.add_control_loc(3)
-        cfg.add_control_loc(4)
-        
-        cfg.set_edge(1, 2, None, [['length', [5]], ['access', [0]]])
-        cfg.set_edge(2, 3,
-                     ['>','index', 'length'],
-                     [])
-        cfg.set_edge(3, 5,
-                     None,
-                     [['access', [ '-', 'index', 'length']]])
-
-        cfg.set_edge(2, 4,
-                     ['<=','index', 'length'],
-                     [])
-        cfg.set_edge(4, 5,
-                     None,
-                     [['access', ['index']]])
-
-        print cfg.to_string()
-
-        cfg.forward_analyze(boxes_factory, boxes_factory.get_top(), boxes_factory.get_bot())
-
-
-    def bounds_002():
-    
-        cfg = Method_CFG(1, 5)
-        cfg.add_control_loc(2)
-        cfg.add_control_loc(3)
-        cfg.add_control_loc(4)
-        
-        cfg.set_edge(1, 2, None, [['length', [5]], ['access', [0]]])
-        cfg.set_edge(2, 3,
-                     ['>','index', 'length'],
-                     [])
-        cfg.set_edge(3, 5,
-                     None,
-                     [['access', [ '-', 'length', 1]]])
-
-        cfg.set_edge(2, 4,
-                     ['<=','index', 'length'],
-                     [])
-        cfg.set_edge(4, 5,
-                     None,
-                     [['access', ['index']]])
-
-        print cfg.to_string()
-        cfg.forward_analyze(boxes_factory, boxes_factory.get_top(), boxes_factory.get_bot())
-
-        
-    def bounds_003():
-    
-        cfg = Method_CFG(1, 6)
-        cfg.add_control_loc(2)
-        cfg.add_control_loc(3)
-        cfg.add_control_loc(4)
-        cfg.add_control_loc(5)
-        
-        cfg.set_edge(1, 2, None, [['length', [5]], ['access', [0]]])
-        cfg.set_edge(2, 4,
-                     ['>','index', 'length'],
-                     [])
-        cfg.set_edge(2, 3,
-                     ['<=','index', 'length'],
-                     [])
-        cfg.set_edge(3, 4,
-                     ['<','index', 0],
-                     [])
-        cfg.set_edge(3, 5,
-                     ['>=','index', 0],
-                     [])
-        
-        cfg.set_edge(4, 6,
-                     None,
-                     [['access', [ '-', 'length', 1]]])
-
-        cfg.set_edge(5, 6,
-                     None,
-                     [['access', ['index']]])
-
-
-        print cfg.to_string()
-        cfg.forward_analyze(boxes_factory, boxes_factory.get_top(), boxes_factory.get_bot())
-
-
-    def bounds_004():
-    
-        cfg = Method_CFG(1, 3)
-        cfg.add_control_loc(2)
-        
-        cfg.set_edge(1, 2, None, [['length', [5]], ['access', [0]]])
-        cfg.set_edge(2, 3,
-                     None,
-                     [['index', [ '%', 'index', 2]]])
-        
-        print cfg.to_string()
-        cfg.forward_analyze(boxes_factory, boxes_factory.get_top(), boxes_factory.get_bot())
-
-    print "BOUNDS 001"
-    bounds_001()
-
-    print "BOUNDS 002"
-    bounds_002()
-
-    print "BOUNDS 003"
-    bounds_003()
-
-    print "BOUNDS 004"
-    bounds_004()
-

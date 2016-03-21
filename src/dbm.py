@@ -30,7 +30,6 @@ class DBM(WeightedGraph):
             result.incomings[node] = []
             for (source, weight) in self.incomings[node]:
                 result.incomings[node].append((source, weight))
-        print result.to_string()
         return result
 
     def set_weight(self, source, weight, target):
@@ -122,7 +121,6 @@ class DBM(WeightedGraph):
                     continue
                 elif (target_distance is None
                       or source_distance + weight < target_distance):
-                    print "Negative cycle existing."
                     negative_cycle = True
                     break
         for node in self.outgoings:

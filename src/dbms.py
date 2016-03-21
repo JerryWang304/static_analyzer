@@ -22,6 +22,7 @@ class DBMFactory():
         self.DEFAULT_MAX_VALUE = DEFAULT_MAX_VALUE
         self.DEFAULT_MIN_VALUE = DEFAULT_MIN_VALUE
         self.constants = []
+        self.variables[0] = (0, 0)
         
     def _intersect(self, tuple1, tuple2):
         (l1, r1) = tuple1
@@ -31,26 +32,30 @@ class DBMFactory():
         return (max(l1, l2), min(r1, r2))
         
     def _interval(self, element, variable):
-        if element is None:
-            return None
-        if variable in element:
-            return element[variable]
+        # variable - 0 <= W
+        # variable <= W
+        right = element.get_weight(variable, 0)
+        left = element.get_weight(0, variable)
+        if right is None:
+            right = self.variables[variable][1]
+        if left is None:
+            left = self.variables[variable][0]
         else:
-            return self.variables[variable]
-
+            left = -left
+        return (left, right)
+            
     def _normalize(self, element):
         if element is None:
+            return None
+        if element.exists_negative_cycle():
             return None
         return element.find_shortest_paths()
  
     def _copy(self, element):
         if element is None:
             return None
-        result = {}
-        for variable in element:
-            result[variable] = element[variable]
-        return result
-
+        return element.copy()
+    
     def _is_in(self, scalar, element):
         if element is None:
             return False
@@ -75,30 +80,39 @@ class DBMFactory():
         self.constants = sorted(self.constants)
     
     def is_subseteq(self, element1, element2):
-        if element1 is None:
-            return True
-        if element2 is None:
-            return False
         s1 = self._normalize(element1)
         s2 = self._normalize(element2)
+        if s1 is None:
+            return True
+        if s2 is None:
+            return False
         common_vars = []
-        for v in self.variables():
+        for v in self.variables:
             if v in s1.all_nodes() or v in s2.all_nodes():
                 common_vars.append(v)
         for v1 in common_vars:
             for v2 in common_vars:
+                w2 = s2.get_weight(v1, v2)
+                if w2 is None:
+                    continue
+                w1 = s1.get_weight(v1, v2)
+                if w1 is None:
+                    return False
                 if s1.get_weight(v1, v2) > s2.get_weight(v1, v2):
                     return False
         return True
                 
     def is_eq(self, element1, element2):
-        if element1 is None:
-            return element2 is None
         
         s1 = self._normalize(element1)
         s2 = self._normalize(element2)
+        if s1 is None:
+            return s2 is None
+        if s2 is None:
+            return False
+
         common_vars = []
-        for v in self.variables():
+        for v in self.variables:
             if v in s1.all_nodes() or v in s2.all_nodes():
                 common_vars.append(v)
         for v1 in common_vars:
@@ -111,6 +125,8 @@ class DBMFactory():
         result = dbm.DBM()
 
         if element1 is None:
+            if element2 is None:
+                return None
             return element2.copy()
         elif element2 is None:
             return element1.copy()
@@ -121,8 +137,8 @@ class DBMFactory():
             return max(m1, m2)
 
         common_vars = []
-        for v in self.variables():
-            if v in s1.all_nodes() or v in s2.all_nodes():
+        for v in self.variables:
+            if v in element1.all_nodes() or v in element2.all_nodes():
                 common_vars.append(v)
         for v1 in common_vars:
             for v2 in common_vars:
@@ -149,8 +165,8 @@ class DBMFactory():
             return min(m1, m2)
 
         common_vars = []
-        for v in self.variables():
-            if v in s1.all_nodes() or v in s2.all_nodes():
+        for v in self.variables:
+            if v in element1.all_nodes() or v in element2.all_nodes():
                 common_vars.append(v)
         for v1 in common_vars:
             for v2 in common_vars:
@@ -161,6 +177,36 @@ class DBMFactory():
                     v2)
         return result
 
+    def _forget_destructive(self, value, variable):
+        result = value
+
+        def min_extended(m1, m2):
+            if m1 is None:
+                return m2
+            elif m2 is None:
+                return m1
+            return min(m1, m2)
+        
+        for i in value.all_nodes():
+            for j in value.all_nodes():
+                if i == j and j == variable:
+                    result.set_weight(i, 0, j)
+                elif i != variable and j != variable:
+                    w1 = value.get_weight(i, variable)
+                    w2 = value.get_weight(variable, j)
+                    w3 = value.get_weight(i, j)
+                    if w1 is None or w2 is None:
+                        result.set_weight(i, value.get_weight(i, j), j)
+                    else:
+                        result.set_weight(i,
+                                          min_extended(w1+w2, w3),
+                                          j)
+                else:
+                    result.set_weight(i, None, j)
+        return result
+    
+    
+    
     def is_literal(self, value):
         return isinstance(value, numbers.Number) 
     
@@ -169,13 +215,10 @@ class DBMFactory():
         strongest postcondition of
         variable := constant
         '''
-        if element is None:
-            return None
-        result = self._copy(element)
-        # todo: what if constant not in range(variable)?
-        result[target_var] = (constant, constant)
-        return self._normalize(result)
-
+        result = self._forget_destructive(element.copy(), target_var)
+        return self._guard(self._guard(result, target_var, 0, constant),
+                           0, target_var, -constant)
+    
     def op_binary(self,
                   element,
                   operator,
@@ -184,6 +227,16 @@ class DBMFactory():
                   op2):
         if element is None:
             return None
+        # special case: x = y + c
+        if operator == '+' and self.is_literal(op1) and self.is_literal(op2):
+            # forget x, then add: x - 0 <= c AND 0 - x <= -c
+            forget_element = self._forget_destructive(element, target_var)
+            result = self._guard(self._guard(forget_element,
+                                             target_var, 0, op1+op2),
+                                 0, target_var, -(op1+op2))
+            return result
+        #elif operator == '+' and self.is_literal(op1):
+        # TODO: op1 == target_var etc.
         if self.is_literal(op1):
             i1 = (op1, op1)
         else:
@@ -198,7 +251,11 @@ class DBMFactory():
                                         i1,
                                         i2)
     
-            
+    # x = y + z
+    # <=>
+    # x - y = z
+    # => x - y >= max(z)
+    # => x - y >= min(z)
     def op_binary_intervals(self,
                             element,
                             operator,
@@ -211,7 +268,7 @@ class DBMFactory():
         '''
         if element is None:
             return None
-        result = self._copy(element)
+
         # todo: what if result not in range?
         (l1, r1) = interval1
         (l2, r2) = interval2
@@ -243,12 +300,25 @@ class DBMFactory():
                 print "Possible Division by zero!"
         else:
             print 'Wrong operator!'
-        if cl is not None or cr is not None:
-            result[target_var] = (cl, cr)
-        else:
-            result[target_var] = self.variables[target_var]
+
+        # forget target var...
+        result = self._forget_destructive(element.copy(), target_var)
+            
+        if cl is not None:
+            result.set_weight(0, -cl, target_var)
+        if cr is not None:
+            result.set_weight(target_var, cr, 0)
+            
         return self._normalize(result)
 
+
+    def _guard(self, element, x, y, c):
+        ''' Effect x - y <= c on element. '''
+        result = self._copy(element)
+        weight = element.get_weight(x, y)
+        if weight is None or c < weight:
+            result.set_weight(x, c, y)
+        return result
     
     def cond_binary(self,
                     element,
@@ -266,69 +336,50 @@ class DBMFactory():
             return self.cond_binary(element, '<', op2, op1)
         elif operator == '>=' :
             return self.cond_binary(element, '<=', op2, op1)
-        result = self._copy(element)
-        i1 = None
-        i2 = None
-        left_var = None
-        right_var = None
-        if self.is_literal(op1):
-            i1 = (op1, op1)
-        else:
-            i1 = self._interval(element, op1)
-            left_var = op1
-        if self.is_literal(op2):
-            i2 = (op2, op2)
-        else:
-            i2 = self._interval(element, op2)
-            right_var = op2
-            
-        (l1, r1) = i1
-        (l2, r2) = i2
-        
-        if operator == '==':
-            buffer = self._intersect((l1, r1), (l2, r2))
-            if buffer is None:
-                return None
+        # TODO '==' and '!='
+        elif operator == '==' :
+            return self.cond_binary(self.cond_binary(element, '<=', op1, op2), '>=', op1, op2)
         elif operator == '!=':
-            if op1 == op2:
-                return None
-            if (l1 - r1) == 0 and (l2-r2) == 0 and (l1 == l2):
-                return None
-
-        new_i1 = None
-        new_i2 = None
-        if operator == '<=':
-            if r2 < l1:
-                return None
-            new_i1 = (l1, min(r1, r2))        
-            new_i2 = (max(l1, l2), r2)
-        elif operator == '<':
-            if op1 == op2:
-                return None
-            if r2 <= l1:
-                return None
-            new_i1 = (l1, min(r1, r2-1))        
-            new_i2 = (max(l1, l2+1), r2)
-        else:
-            print 'Unknown operator: %s ' % operator
-            
-        if new_i1 and left_var:
-            result[left_var] = new_i1
-        if new_i2 and right_var:
-            result[right_var] = new_i2
+            # TODO: more preices
+            return self._copy(element)
         
-        return self._normalize(result)
+        result = self._copy(element)
+        
+        # standard form:
+        #     x <= y
+        # <=> x - y <= 0
+        x = op1
+        y = op2
+        
+        # x < y <=> x <= y - 1  <=> x - y <= -1
+        offset = -1 if operator == '<' else 0 
+        if self.is_literal(op1):
+            # c1 - y <= 0
+            # <=> -y <= - c1
+            # <=> 0 - y <= - c1
+            return self._guard(element, 0, op2, -op1 + offset)
+        elif self.is_literal(op2):
+            # x - c2 <= c
+            # x - 0  <= c2
+            return self._guard(element, op1, 0, op2 + offset)
+        else:
+            return self._guard(element, op1, op2, offset)
     
     def widen(self, element1, element2):
         result = dbm.DBM()
                 
         if element1 is None:
+            if element2 is None:
+                return None
             return element2.copy()
         elif element2 is None:
             return element1.copy()
 
+        s1 = self._normalize(element1)
+        s2 = self._normalize(element2)
+        
         common_vars = []
-        for v in self.variables():
+        for v in self.variables:
             if v in s1.all_nodes() or v in s2.all_nodes():
                 common_vars.append(v)
         for v1 in common_vars:
@@ -342,19 +393,20 @@ class DBMFactory():
         return result
     
     def to_string(self, element):
+        element = self._normalize(element)
+        
         if element is None:
             return '<BOT>'
-        elif len(element) == 0:
-            return '<TOP>'
-        result = '['
-        keys_sorted = sorted(element.keys())
-        for variable in keys_sorted:
-            result += ('%s in [%s, %s], '
-                       % (variable,
-                          element[variable][0],
-                          element[variable][1]))
-        if result.endswith(', '):
-            result = result[:-2]
-        result += ']'
+        #elif len(element.variables) == 0:
+        #    return '<TOP>'
+        
+        result = '[\n'
+        for v1 in self.variables:
+            for v2 in self.variables:
+                d = element.get_weight(v1, v2)
+                if d is not None:
+                    result += "%s - %s <= %s\n" % (v1, v2, d)
+                    
+        result += ']\n'
         return result
 
