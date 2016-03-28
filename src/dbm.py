@@ -2,7 +2,7 @@
 #
 # dbms.py 
 #
-# Difference bound matrices domain
+# Difference bound matrices ADT
 #
 # (C) 2016, Andreas Gaiser
 ######################################

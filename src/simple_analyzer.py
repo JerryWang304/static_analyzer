@@ -8,8 +8,6 @@
 ##############################
 
 
-import boxes
-
 # (I) Arithmetic expressions
 # 
 # CONST
@@ -23,7 +21,6 @@ import boxes
 # X + Y ==> ['+', X, Y]
 #
 # No nested expressions supported yet.
-
 
 #
 # (II) Assignments
@@ -45,7 +42,7 @@ import boxes
 # ['<=', 'x', 'y']
 
 
-class Method_CFG():
+class MethodCFG():
 
     def __init__(self, init_location, end_location):
         self.control_locs = [init_location, end_location]
@@ -56,7 +53,6 @@ class Method_CFG():
 
     def to_string(self):
         result = ''
-        
         for (s, t) in self.edges:
             (cond, actions) = self.edges[(s, t)]
             result += '%s -> %s \n\t' % (s, t)
@@ -97,7 +93,7 @@ class Method_CFG():
                 return dom.op_binary(value,
                                      '+',
                                      variable,
-                                     expression[0],
+                                     op1,
                                      0)
             elif len(expression) == 3:
                 (operator, op1, op2) = expression

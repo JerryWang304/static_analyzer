@@ -1,11 +1,10 @@
 import pytest
 
-import graph_algorithms
-import dbms
+import dbm
 
 def test_dbm_set_weight_get_weight():
 
-    d = dbms.DBM()
+    d = dbm.DBM()
     d.set_weight(1, 3, 2)
     assert d.get_weight(1, 2) == 3
     d.set_weight(2, 4, 2)
@@ -27,7 +26,7 @@ def test_dbm_set_weight_get_weight():
     
 def test_dbm_copy():
     
-    d = dbms.DBM()
+    d = dbm.DBM()
     x = [1,2]
     y = [3,4]
     d.set_weight(1, x , 2)
@@ -37,15 +36,15 @@ def test_dbm_copy():
 
 def test_dbm_exists_negative_cycle():
 
-    d1 = dbms.DBM()
+    d1 = dbm.DBM()
     d1.set_weight(1, 1, 2)
     d1.set_weight(2, -2, 1)
     assert d1.exists_negative_cycle()
-    d2 = dbms.DBM()
+    d2 = dbm.DBM()
     d2.set_weight(1, -2, 2)
     d2.set_weight(2, 3, 1)
     assert not d2.exists_negative_cycle()
-    d3 = dbms.DBM()
+    d3 = dbm.DBM()
     for i in range(0, 500):
         d3.set_weight(i, i*((-1)**(i % 2)), i+1)
     d3.set_weight(500, 100, 50)
@@ -56,7 +55,7 @@ def test_dbm_exists_negative_cycle():
 def test_dbm_find_shortest_paths():
 
     # example from wikipedia, slightly extended
-    d1 = dbms.DBM()
+    d1 = dbm.DBM()
     d1.set_weight(1, -2, 3)
     d1.set_weight(3, 2, 4)
     d1.set_weight(4, -1, 2)

@@ -4,27 +4,21 @@
 #
 # Box (interval) domain
 #
+# (C) 2016, Andreas Gaiser
 ##############################
 
-
-# TODO: 
-# shifts
-# 
-
+import domain_factory
 import numbers
 
-
-class BoxDomainFactory():
-
-    #
-    # Private methods
-    #
+class BoxDomainFactory(domain_factory.DomainFactory):
 
     def __init__(self, DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE):
         self.variables = {}
         self.DEFAULT_MAX_VALUE = DEFAULT_MAX_VALUE
         self.DEFAULT_MIN_VALUE = DEFAULT_MIN_VALUE
         self.constants = []
+
+    # Private methods
         
     def _union(self, tuple1, tuple2):
         (l1, r1) = tuple1
@@ -68,14 +62,82 @@ class BoxDomainFactory():
             return False
         (l, r) = element
         return (l <= scalar and r >= scalar)
-            
-    #
-    # Public methods
-    #
-    
-    def add_var(self, variable, max_val, min_val):
-        self.variables[variable] = (max_val, min_val)
+
+    def _is_literal(self, value):
+        return isinstance(value, numbers.Number) 
+
+    def _op_binary_intervals(self,
+                            element,
+                            operator,
+                            target_var,
+                            interval1,
+                            interval2):
+        if element is None:
+            return None
+        result = self._copy(element)
+        # todo: what if result not in range?
+        (l1, r1) = interval1
+        (l2, r2) = interval2
+        cl = None
+        cr = None
+        if operator == '*':
+            # maybe switch (negative numbers)
+            (cl, cr) = (min(l1*l2, r1*r2, l1*r2, l2*r1),
+                        max(l1*l2, r1*r2, l1*r2, l2*r1))
+        elif operator == '+':
+            (cl, cr) = (l1+l2, r1+r2)
+        elif operator == '-':
+            (cl, cr) = (l1-l2, r2-l2)
+        elif operator == '%':
+            # i2 contains 1 integer
+            if r2-l2 == 0 and r2 == 0:
+                print "Division by zero!"
+                return None
+            elif r2-l2 == 0 and r1-l1 == 0:
+                (cl, cr) = (r1 % r2, r1 % r2)
+            else:
+                max_el = max(abs(l2), abs(r2))-1
+                if l1 >= 0:
+                    (cl, cr) = (0, max_el)
+                else:
+                    (cl, cr) = (-max_el, max_el)
+                    
+            if l2 <= 0 and 0 <= r2:
+                print "Possible Division by zero!"
+        else:
+            print 'Wrong operator!'
+        if cl is not None or cr is not None:
+            result[target_var] = (cl, cr)
+        else:
+            result[target_var] = self.variables[target_var]
+        return self._normalize(result)
         
+    # Variable handling
+
+    def add_integer_var(self, variable, max_val, min_val):
+        self.variables[variable] = (max_val, min_val)
+
+    # I/O
+
+    def to_string(self, element):
+        if element is None:
+            return '<BOT>'
+        elif len(element) == 0:
+            return '<TOP>'
+        result = '['
+        keys_sorted = sorted(element.keys())
+        for variable in keys_sorted:
+            result += ('%s in [%s, %s], '
+                       % (variable,
+                          element[variable][0],
+                          element[variable][1]))
+        if result.endswith(', '):
+            result = result[:-2]
+        result += ']'
+        return result
+
+    # Algebraic operations
+    
     def get_top(self):
         return {}
 
@@ -132,167 +194,6 @@ class BoxDomainFactory():
                 return None
         return result
 
-    def is_literal(self, value):
-        return isinstance(value, numbers.Number) 
-    
-    def op_load_constant(self, element, target_var, constant):
-        '''
-        strongest postcondition of
-        variable := constant
-        '''
-        if element is None:
-            return None
-        result = self._copy(element)
-        # todo: what if constant not in range(variable)?
-        result[target_var] = (constant, constant)
-        return self._normalize(result)
-
-    def op_binary(self,
-                  element,
-                  operator,
-                  target_var,
-                  op1,
-                  op2):
-        if element is None:
-            return None
-        if self.is_literal(op1):
-            i1 = (op1, op1)
-        else:
-            i1 = self._interval(element, op1) 
-        if self.is_literal(op2):
-            i2 = (op2, op2)
-        else:
-            i2 = self._interval(element, op2)
-        return self.op_binary_intervals(element,
-                                        operator,
-                                        target_var,
-                                        i1,
-                                        i2)
-    
-            
-    def op_binary_intervals(self,
-                            element,
-                            operator,
-                            target_var,
-                            interval1,
-                            interval2):
-        '''
-        strongest postcondition of
-        variable := i1 (+) i2
-        '''
-        if element is None:
-            return None
-        result = self._copy(element)
-        # todo: what if result not in range?
-        (l1, r1) = interval1
-        (l2, r2) = interval2
-        cl = None
-        cr = None
-        if operator == '*':
-            # maybe switch (negative numbers)
-            (cl, cr) = (min(l1*l2, r1*r2, l1*r2, l2*r1),
-                        max(l1*l2, r1*r2, l1*r2, l2*r1))
-        elif operator == '+':
-            (cl, cr) = (l1+l2, r1+r2)
-        elif operator == '-':
-            (cl, cr) = (l1-l2, r2-l2)
-        elif operator == '%':
-            # i2 contains 1 integer
-            if r2-l2 == 0 and r2 == 0:
-                print "Division by zero!"
-                return None
-            elif r2-l2 == 0 and r1-l1 == 0:
-                (cl, cr) = (r1 % r2, r1 % r2)
-            else:
-                max_el = max(abs(l2), abs(r2))-1
-                if l1 >= 0:
-                    (cl, cr) = (0, max_el)
-                else:
-                    (cl, cr) = (-max_el, max_el)
-                    
-            if l2 <= 0 and 0 <= r2:
-                print "Possible Division by zero!"
-        else:
-            print 'Wrong operator!'
-        if cl is not None or cr is not None:
-            #print "RESULT (%s)=%s, %s, %s, %s" % (operator, target_var, (cl, cr), (l1, r1), (l2, r2) ) 
-            result[target_var] = (cl, cr)
-        else:
-            result[target_var] = self.variables[target_var]
-        return self._normalize(result)
-
-    
-    def cond_binary(self,
-                    element,
-                    operator,
-                    op1,
-                    op2):
-        '''
-        strongest postcondition of
-        (variable (=) variable)
-        '''
-        if element is None:
-            return None
-
-        if operator == '>' :
-            return self.cond_binary(element, '<', op2, op1)
-        elif operator == '>=' :
-            return self.cond_binary(element, '<=', op2, op1)
-        result = self._copy(element)
-        i1 = None
-        i2 = None
-        left_var = None
-        right_var = None
-        if self.is_literal(op1):
-            i1 = (op1, op1)
-        else:
-            i1 = self._interval(element, op1)
-            left_var = op1
-        if self.is_literal(op2):
-            i2 = (op2, op2)
-        else:
-            i2 = self._interval(element, op2)
-            right_var = op2
-            
-        (l1, r1) = i1
-        (l2, r2) = i2
-        
-        if operator == '==':
-            buffer = self._intersect((l1, r1), (l2, r2))
-            if buffer is None:
-                return None
-        elif operator == '!=':
-            if op1 == op2:
-                return None
-            if (l1 - r1) == 0 and (l2-r2) == 0 and (l1 == l2):
-                return None
-
-        new_i1 = None
-        new_i2 = None
-        if operator == '<=':
-            if r2 < l1:
-                return None
-            new_i1 = (l1, min(r1, r2))        
-            new_i2 = (max(l1, l2), r2)
-        elif operator == '<':
-            if op1 == op2:
-                return None
-            if r2 <= l1:
-                return None
-            new_i1 = (l1, min(r1, r2-1))        
-            new_i2 = (max(l1, l2+1), r2)
-        else:
-            print 'Unknown operator: %s ' % operator
-        #print "RESULT (%s)=%s, %s, %s, %s OLD: %s %s" % (operator, new_i1, new_i2, left_var, right_var, (l1, r1), (l2, r2)) 
-            
-        if new_i1 and left_var:
-            result[left_var] = new_i1
-        if new_i2 and right_var:
-            result[right_var] = new_i2
-        
-        return self._normalize(result)
-
-    
     def widen(self, element1, element2):
         result = self._copy(element2)
         if element1 is None or element2 is None:
@@ -330,28 +231,108 @@ class BoxDomainFactory():
                     r = v_max
             result[variable] = (l, r)
         return self._normalize(result)
+
+    # Semantics of the abstract machine
     
-    def set_interval(self, element, variable, l, r):
-        result = self._copy(element)
+    def op_load_constant(self, element, target_var, constant):
         if element is None:
-            result = {}
-        result[variable] = (l, r)
+            return None
+        result = self._copy(element)
+        # TODO: what if constant not in range(variable)?
+        result[target_var] = (constant, constant)
         return self._normalize(result)
     
-    def to_string(self, element):
+    def op_binary(self,
+                  element,
+                  operator,
+                  target_var,
+                  op1,
+                  op2):
         if element is None:
-            return '<BOT>'
-        elif len(element) == 0:
-            return '<TOP>'
-        result = '['
-        keys_sorted = sorted(element.keys())
-        for variable in keys_sorted:
-            result += ('%s in [%s, %s], '
-                       % (variable,
-                          element[variable][0],
-                          element[variable][1]))
-        if result.endswith(', '):
-            result = result[:-2]
-        result += ']'
-        return result
+            return None
+        if self._is_literal(op1):
+            i1 = (op1, op1)
+        else:
+            i1 = self._interval(element, op1) 
+        if self._is_literal(op2):
+            i2 = (op2, op2)
+        else:
+            i2 = self._interval(element, op2)
+        return self._op_binary_intervals(element,
+                                         operator,
+                                         target_var,
+                                         i1,
+                                         i2)
+    
+    def cond_binary(self,
+                    element,
+                    operator,
+                    op1,
+                    op2):
+        if element is None:
+            return None
 
+        if operator == '>' :
+            return self.cond_binary(element, '<', op2, op1)
+        elif operator == '>=' :
+            return self.cond_binary(element, '<=', op2, op1)
+        result = self._copy(element)
+        i1 = None
+        i2 = None
+        left_var = None
+        right_var = None
+        if self._is_literal(op1):
+            i1 = (op1, op1)
+        else:
+            i1 = self._interval(element, op1)
+            left_var = op1
+        if self._is_literal(op2):
+            i2 = (op2, op2)
+        else:
+            i2 = self._interval(element, op2)
+            right_var = op2
+            
+        (l1, r1) = i1
+        (l2, r2) = i2
+        
+        if operator == '==':
+            buffer = self._intersect((l1, r1), (l2, r2))
+            if buffer is None:
+                return None
+        elif operator == '!=':
+            if op1 == op2:
+                return None
+            if (l1 - r1) == 0 and (l2-r2) == 0 and (l1 == l2):
+                return None
+
+        new_i1 = None
+        new_i2 = None
+        if operator == '<=':
+            if r2 < l1:
+                return None
+            new_i1 = (l1, min(r1, r2))        
+            new_i2 = (max(l1, l2), r2)
+        elif operator == '<':
+            if op1 == op2:
+                return None
+            if r2 <= l1:
+                return None
+            new_i1 = (l1, min(r1, r2-1))        
+            new_i2 = (max(l1, l2+1), r2)
+        else:
+            print 'Unknown operator: %s ' % operator
+            
+        if new_i1 and left_var:
+            result[left_var] = new_i1
+        if new_i2 and right_var:
+            result[right_var] = new_i2
+        
+        return self._normalize(result)
+    
+#    def set_interval(self, element, variable, l, r):
+#        result = self._copy(element)
+#        if element is None:
+#            result = {}
+#        result[variable] = (l, r)
+#        return self._normalize(result)
+    
