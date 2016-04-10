@@ -27,9 +27,9 @@ def test_dbm_set_weight_get_weight():
 def test_dbm_copy():
     
     d = dbm.DBM()
-    x = [1,2]
-    y = [3,4]
-    d.set_weight(1, x , 2)
+    x = 100
+    y = 200
+    d.set_weight(1, x, 2)
     d.set_weight(2, y, 2)
     d2 = d.copy()
     assert d.to_string() == d2.to_string() # == d2.to_string()
