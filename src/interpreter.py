@@ -8,42 +8,57 @@
 ##############################
 
 
-# (I) Arithmetic expressions
-# 
-# CONST
-# VAR
-# VAR (+) CONST
-# VAR (+) VAR
-#
+class ComputationComponent(object):
 
-# given as list-encoded trees.
-# e.g.
-# X + Y ==> ['+', X, Y]
-#
-# No nested expressions supported yet.
+    def __init__(self, sequence):
+        self._sequence = sequence
 
-#
-# (II) Assignments
-#
-# VAR := AExpr
-#
-# given as list expression:
-# X := A + 1 ==> [':=', 'X', ['+', A, 1]]
-#
-#
+    def push_first(self, element):
+        self._sequence.insert(0, element)
 
-#
-# (III) Boolean expressions
-#
-# X (~) Y
-# X (~) CONST
-#
-# given as list expression:
-# ['<=', 'x', 'y']
+    def __str__(self):
+        result = '['
+        for obj in self._sequence:
+            result += '%s ' % obj
+        result += ']'
+        return result
 
+    def get_sequence(self):
+        return self._sequence
 
-class MethodCFG():
+    
+class Assignment(object):
 
+    def __init__(self, target_object, rhs):
+        self.target = target_object
+        self.rhs = rhs
+
+    def __str__(self):
+        return '%s := %s' % (self.target, self.rhs)
+    
+class BasicBlock(object):
+
+    def __init__(self, id, assignments):
+        self.id = id
+        self.assignments = assignments
+
+    def __str__(self):
+        result = 'BasicBlock(%s)[ ' % self.id
+        for assignment in self.assignments:
+            result += '%s;' % assignment
+        result += ' ]'
+        return result
+        
+class FlowEdge(object):
+
+    def __init__(self, label):
+        self.label = label
+
+    def __str__(self):
+        return 'EDGE:%s' % self.label
+    
+class MethodCFG(object):
+    
     def __init__(self, init_location, end_location):
         self.control_locs = [init_location, end_location]
         self.init_loc = init_location
@@ -53,55 +68,35 @@ class MethodCFG():
         self.out_edges = {}
         self.in_edges = {}
         self.counter = 0
+        self.in_values = {}
+        self.out_values = {}
+        self.add_block(init_location)
+        self.add_block(end_location)
         
-    def to_string(self):
+    def __str__(self):
         result = ''
         for (s, t) in self.edges:
-            (cond, actions) = self.edges[(s, t)]
-            result += '%s -> %s \n\t' % (s, t)
-            if cond is None:
-                result += ' [True] '
-            else:
-                result += ' %s ' % cond
-            if len(actions) != 0:
-                result += '\n\t'
-                for action in actions:
-                    result += ' @<%s> ' % action
-            result += '\n'
-            
+            condition = self.edges[(s, t)].label
+            result += '%s ==((%s))==> %s \n' % (s, condition, t)
         return result 
-        
-    def add_control_loc(self, control_loc, is_widen_point = False):
-        self.control_locs.append(control_loc)
-        if is_widen_point:
-            self.widen_points.append(control_loc)
-        self.out_edges[control_loc] = []
-        self.in_edges[control_loc] = []
-            
-    def set_edge(self, loc1, loc2, condition, assignments):
-        edge_value = [condition, assignments]
-        assert loc1 in self.control_locs
-        assert loc2 in self.control_locs
-        self.edges[(loc1, loc2)] = edge_value
-        self.out_edges.setdefault(loc1, []).append(loc2)
-        self.in_edges.setdefault(loc2, []).append(loc1)
-       
+
     def compute_bourdoncle_widenpoints(self, reverse=False):
         dfn = {}
-        partition = []
+        partition = ComputationComponent([])
         self.counter = 0
         stack = []
         for node in self.control_locs:
             dfn[node] = 0
             
         def component(vertex):
-            p = []
+            p = ComputationComponent([])
             outgoings = (self.out_edges[vertex]
                          if not reverse else self.in_edges[vertex])
             for succ in outgoings:
                 if dfn[succ] == 0:
                     visit(succ, p)
-            return [vertex] + p
+            p.push_first(vertex)
+            return p
             
         def visit(loc, p):
             stack.append(loc)
@@ -127,96 +122,132 @@ class MethodCFG():
                     while element != loc:
                         dfn[element] = 0
                         element = stack.pop()
-                    p.insert(0, component(loc))
+                    p.push_first(component(loc))
                 else:
-                    p.insert(0, loc)
+                    p.push_first(loc)
             return head
         if reverse:
             visit(self.end_loc, partition)
         else:
             visit(self.init_loc, partition)
         return partition
+    
+    def add_block(self, control_loc, is_widen_point = False):
+        self.control_locs.append(control_loc)
+        if is_widen_point:
+            self.widen_points.append(control_loc)
+        self.out_edges[control_loc] = []
+        self.in_edges[control_loc] = []
+            
+    def set_edge(self, loc1, loc2, condition):
+        edge = FlowEdge(condition)
+        assert loc1 in self.control_locs
+        assert loc2 in self.control_locs
+        self.edges[(loc1, loc2)] = edge
+        self.out_edges.setdefault(loc1, []).append(loc2)
+        self.in_edges.setdefault(loc2, []).append(loc1)
+       
+    def prepare(self):
+        self.forward_computation_sequence = self.compute_bourdoncle_widenpoints(reverse=False)
+        self.backward_computation_sequence = self.compute_bourdoncle_widenpoints(reverse=True)
+
+    # evaluate an assignment
+    # TODO: make this more extensible!
+    def _apply_assignment(assignment, value):
+        target = assignment.target
+        rhs = assignment.rhs
+        # case distinction:
+        if len(rhs) == 1:
+            # constant or variable
+            op1 = rhs[0]
+            return dom.op_binary(value,
+                                 '+',
+                                 target,
+                                 op1,
+                                 0)
+        elif len(rhs) == 3:
+            (operator, op1, op2) = rhs
+            return dom.op_binary(value,
+                                 operator,
+                                 target,
+                                 op1,
+                                 op2)
+
+    def _apply_condition(condition, value):
+        (operator, op1, op2) = condition
+        return dom.cond_binary(value,
+                               operator,
+                               op1,
+                               op2)
         
-    def forward_analyze(self,
-                        dom,
-                        head_init_element,
-                        ordinary_init_element,
-                        iterations_without_widening = 5):
-
-        # evaluate an assignment
-        # TODO: make this more extensible!
-        def apply_assignment(assignment, value):
-            (variable, expression) = assignment
-            # case distinction:
-            if len(expression) == 1:
-                # constant or variable
-                op1 = expression[0]
-                return dom.op_binary(value,
-                                     '+',
-                                     variable,
-                                     op1,
-                                     0)
-            
-            elif len(expression) == 3:
-                (operator, op1, op2) = expression
-                return dom.op_binary(value,
-                                     operator,
-                                     variable,
-                                     op1,
-                                     op2)
-                
-
-        def apply_condition(condition, value):
-            (operator, op1, op2) = condition
-            return dom.cond_binary(value,
-                                   operator,
-                                   op1,
-                                   op2)
-                
-        # init values
-        values = {}
+    def forward(self,
+                dom,
+                head_init_element,
+                ordinary_init_element,
+                iterations_without_widening = 5):
+        ins = {}
+        outs = {}
         for loc in self.control_locs:
-            values[loc] = head_init_element if loc == self.init_loc else ordinary_init_element             
-        def iterate(values, do_widen = True):
-            new_values = {}
-            for loc in values:
-                new_values[loc] = values[loc]
-            for loc in self.control_locs:
-                buffer = values[loc]
-                for (s, t) in self.edges:
-                    if t == loc:
-                        (condition, assignments) = self.edges[(s, t)]
-                        # is there a condition?
-                        inflow = (apply_condition(condition, values[s])
-                                  if (condition is not None) else values[s])
+            ins[loc] = head_init_element if loc == self.init_loc else ordinary_init_element
+            outs[loc] = ordinary_init_element
+
+        def stabilize(component):
+            elements = component.get_sequence()
+            widen_loc = None
+            if (len(elements) > 0
+                and not isinstance(elements[0], ComputationComponent)):
+                widen_loc = elements[0]
+            decreasing = False
+            while not decreasing:
+                decreasing = True
+                for element in elements:
+                    if isinstance(element, ComputationComponent):
+                        stabilize(element)
+                    else:
+                        new_input = ins[element]
+                        # single element
+                        for source in self.in_edges[element]:
+                            current_edge = self.edges[(source, element)]
+                            # is there a condition?
+                            condition = current_edge.label
+                            new_input = dom.union(new_input,
+                                               (self._apply_condition(condition, outs[source])
+                                                if (condition is not None) else outs[source]))
+                        # compute output                  
+                        new_output = new_input
                         for assignment in assignments:
-                            inflow = apply_assignment(assignment, inflow)
-                        buffer = dom.union(buffer, inflow)
-                        
-                new_values[loc] = buffer
-            if do_widen:
-                for loc in self.widen_points:
-                    new_values[loc] = dom.widen(values[loc], new_values[loc])
-            postfixpoint_reached = True
-            for loc in self.control_locs:
-                # initialize results
-                larger_or_equal = dom.is_subseteq(values[loc], new_values[loc])
-                smaller_or_equal = dom.is_subseteq(new_values[loc], values[loc])
-                is_increasing = larger_or_equal and not smaller_or_equal
-                postfixpoint_reached = postfixpoint_reached and not is_increasing
-            return (postfixpoint_reached, new_values)
+                            new_output = apply_assignment(assignment,  new_output)
+                        if element == widen_loc:
+                            new_output = dom.widen(outs[element], new_output)
+                        decreasing = dom.is_subseteq(new_output, outs[element])
+                        outs[element] = new_output
+                        ins[element] = new_input
 
-        postfixpoint_reached = False
+        stabilize(self.forward_computation_sequence)
+        self.in_values = ins
+        self.out_values = outs
 
-        iterations = 0
-        while not postfixpoint_reached:
-            (postfixpoint_reached, values) \
-                = iterate(values,
-                          iterations > iterations_without_widening)
-            iterations += 1
-        print "ITERATIONS: %s" % iterations
-        print "**************************"
-        for loc in values:
-            print('"%s" : "%s"' % (loc, dom.to_string(values[loc])))
-            print "**************************"
-            
+
+if __name__ == '__main__':
+
+
+    a1 = Assignment('x', [2])
+    a2 = Assignment('y', ['+', 'y', 2])
+    a3 = Assignment('x', ['+', 'x', 1])
+    a4 = Assignment('c', ['<', 'y', 'x'])
+    a5 = Assignment('d', ['==', 'y', 2])
+
+    b1 = BasicBlock(1, [a1, a2])
+    b2 = BasicBlock(2, [a3, a4])
+    b3 = BasicBlock(3, [a5])
+    
+    
+    cfg = MethodCFG(b1, b3)
+    cfg.add_block(b2)
+    cfg.set_edge(b1, b2, None)
+    cfg.set_edge(b2, b3, ['>=', 'x', 'y'])
+    cfg.set_edge(b2, b1, ['<', 'x', 'y'])
+    
+    print('%s' % cfg)
+    cfg.prepare()
+    print cfg.forward_computation_sequence
