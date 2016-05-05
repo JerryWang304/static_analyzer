@@ -156,6 +156,21 @@ class DBMFactory(domain_factory.DomainFactory):
             result.set_weight(x, c, y)
         return result
 
+    def _translate(self, element, x, c):
+        ''' Effect x = x + c on element. '''
+        result = self._copy(element)
+        for v in self.variables:
+            if x == v:
+                continue
+            d1 = element.get_weight(v, x)
+            if d1 is not None:
+                # v - x - c <= d1 - c
+                result.set_weight(v, d1 - c, x)
+            d2 = element.get_weight(x, v)
+            if d2 is not None:
+                # v - x + c <= d1 + c
+                result.set_weight(x, d2 + c, v)
+        return result
     
     # Public methods
 
@@ -164,10 +179,13 @@ class DBMFactory(domain_factory.DomainFactory):
         self.constants = sorted(self.constants)
 
     # Variable handling
+            
+    def add_integer_var(self, variable, min_val, max_val):
+        self.variables[variable] = (min_val, max_val)
 
-    def add_integer_var(self, variable, max_val, min_val):
-        self.variables[variable] = (max_val, min_val)
-    
+    def add_bool_var(self, variable):
+        self.add_integer_var(variable, 0, 1)
+        
     # I/O
 
     def to_string(self, element):
@@ -179,11 +197,15 @@ class DBMFactory(domain_factory.DomainFactory):
         #    return '<TOP>'
         is_top = True
         result = '[\n'
+        first = True
         for v1 in self.variables:
             for v2 in self.variables:
                 d = element.get_weight(v1, v2)
                 if d is not None:
-                    result += "%s - %s <= %s\n" % (v1, v2, d)
+                    if not first:
+                        result += ", "
+                    first = False
+                    result += "%s - %s <= %s" % (v1, v2, d)
                     is_top = False
         result += ']\n'
         if is_top:
@@ -243,25 +265,27 @@ class DBMFactory(domain_factory.DomainFactory):
             if m1 is None or m2 is None:
                 return None
             return max(m1, m2)
-    
-        result = dbm.DBM()
+        
         if element1 is None:
             if element2 is None:
-                return None
-            return element2.copy()
+                result = None
+            else:
+                result = element2.copy()
         elif element2 is None:
-            return element1.copy()
-        common_vars = []
-        for v in self.variables:
-            if v in element1.all_nodes() or v in element2.all_nodes():
-                common_vars.append(v)
-        for v1 in common_vars:
-            for v2 in common_vars:
-                result.set_weight(
-                    v1,
-                    max_extended(element1.get_weight(v1, v2),
-                                 element2.get_weight(v1, v2)),
-                    v2)
+            result = element1.copy()
+        else:
+            result = dbm.DBM()
+            common_vars = []
+            for v in self.variables:
+                if v in element1.all_nodes() or v in element2.all_nodes():
+                    common_vars.append(v)
+            for v1 in common_vars:
+                for v2 in common_vars:
+                    result.set_weight(
+                        v1,
+                        max_extended(element1.get_weight(v1, v2),
+                                     element2.get_weight(v1, v2)),
+                        v2)
         return result
 
     def intersect(self, element1, element2):
@@ -328,8 +352,14 @@ class DBMFactory(domain_factory.DomainFactory):
                   op2):
         if element is None:
             return None
+        if operator == '-' and self._is_literal(op2) and target_var == op1:
+            return self._translate(element, target_var, -op2)
+            
         # special case: x = y + c
-        if operator == '+' and self._is_literal(op2):
+        elif operator == '+' and self._is_literal(op2):
+            # is x the same as y? 
+            if target_var == op1:
+                return self._translate(element, target_var, op2)
             forget_element = self._forget_destructive(element,
                                                       target_var)
             result = None
@@ -400,4 +430,3 @@ class DBMFactory(domain_factory.DomainFactory):
             return self._guard(element, op1, 0, op2 + offset)
         else:
             return self._guard(element, op1, op2, offset)
-    

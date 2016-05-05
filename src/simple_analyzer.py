@@ -95,6 +95,7 @@ class MethodCFG():
                                      variable,
                                      op1,
                                      0)
+            
             elif len(expression) == 3:
                 (operator, op1, op2) = expression
                 return dom.op_binary(value,
@@ -123,20 +124,15 @@ class MethodCFG():
                 buffer = values[loc]
                 for (s, t) in self.edges:
                     if t == loc:
-                        # print "EDGE: %s -> %s" %  (s, t)
                         (condition, assignments) = self.edges[(s, t)]
                         # is there a condition?
                         inflow = (apply_condition(condition, values[s])
                                   if (condition is not None) else values[s])
-                        
                         for assignment in assignments:
                             inflow = apply_assignment(assignment, inflow)
-                            
                         buffer = dom.union(buffer, inflow)
+                        
                 new_values[loc] = buffer
-            #print "PRE WIDEN:"
-            #for loc in self.control_locs:
-            #    print('"%s" : "%s"' % (loc, dom.to_string(new_values[loc])))
             if do_widen:
                 for loc in self.widen_points:
                     new_values[loc] = dom.widen(values[loc], new_values[loc])
@@ -146,12 +142,7 @@ class MethodCFG():
                 larger_or_equal = dom.is_subseteq(values[loc], new_values[loc])
                 smaller_or_equal = dom.is_subseteq(new_values[loc], values[loc])
                 is_increasing = larger_or_equal and not smaller_or_equal
-                print "PF reached: %s, %s, %s" % (loc, larger_or_equal, smaller_or_equal)
                 postfixpoint_reached = postfixpoint_reached and not is_increasing
-            #if postfixpoint_reached:
-            #    for loc in self.control_locs:
-            #        print('"%s" : "%s"' % (loc, dom.to_string(new_values[loc])))
-
             return (postfixpoint_reached, new_values)
 
         postfixpoint_reached = False
@@ -162,6 +153,8 @@ class MethodCFG():
                 = iterate(values,
                           iterations > iterations_without_widening)
             iterations += 1
+        print "ITERATIONS: %s" % iterations
+        print "**************************"
         for loc in values:
             print('"%s" : "%s"' % (loc, dom.to_string(values[loc])))
             print "**************************"

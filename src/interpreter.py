@@ -7,6 +7,8 @@
 # (C) 2016, Andreas Gaiser
 ##############################
 
+import boxes
+import dbms
 
 class ComputationComponent(object):
 
@@ -60,7 +62,7 @@ class FlowEdge(object):
 class MethodCFG(object):
     
     def __init__(self, init_location, end_location):
-        self.control_locs = [init_location, end_location]
+        self.control_locs = []
         self.init_loc = init_location
         self.end_loc = end_location
         self.widen_points = []
@@ -153,7 +155,7 @@ class MethodCFG(object):
 
     # evaluate an assignment
     # TODO: make this more extensible!
-    def _apply_assignment(assignment, value):
+    def _apply_assignment(self, assignment, value):
         target = assignment.target
         rhs = assignment.rhs
         # case distinction:
@@ -173,7 +175,7 @@ class MethodCFG(object):
                                  op1,
                                  op2)
 
-    def _apply_condition(condition, value):
+    def _apply_condition(self, condition, value):
         (operator, op1, op2) = condition
         return dom.cond_binary(value,
                                operator,
@@ -192,6 +194,7 @@ class MethodCFG(object):
             outs[loc] = ordinary_init_element
 
         def stabilize(component):
+            widen_count = 0
             elements = component.get_sequence()
             widen_loc = None
             if (len(elements) > 0
@@ -201,6 +204,7 @@ class MethodCFG(object):
             while not decreasing:
                 decreasing = True
                 for element in elements:
+                    print "Processing: %s" % element
                     if isinstance(element, ComputationComponent):
                         stabilize(element)
                     else:
@@ -211,43 +215,81 @@ class MethodCFG(object):
                             # is there a condition?
                             condition = current_edge.label
                             new_input = dom.union(new_input,
-                                               (self._apply_condition(condition, outs[source])
-                                                if (condition is not None) else outs[source]))
+                                                  (self._apply_condition(condition,
+                                                                         outs[source])
+                                                   if (condition is not None) else outs[source]))
                         # compute output                  
                         new_output = new_input
-                        for assignment in assignments:
-                            new_output = apply_assignment(assignment,  new_output)
+                        for assignment in element.assignments:
+                            new_output = self._apply_assignment(assignment,  new_output)
                         if element == widen_loc:
-                            new_output = dom.widen(outs[element], new_output)
+                            if widen_count >= iterations_without_widening:
+                                new_output = dom.widen(outs[element], new_output)
+                            else:
+                                widen_count += 1
                         decreasing = dom.is_subseteq(new_output, outs[element])
                         outs[element] = new_output
                         ins[element] = new_input
+                        # print self.values_to_string(ins, outs)
 
         stabilize(self.forward_computation_sequence)
         self.in_values = ins
         self.out_values = outs
 
+    def values_to_string(self, ins, outs):
+        assert ins
+        assert outs
+        result = ''
+        for basic_block in self.control_locs:
+            result += ('%s, \nIN: %s\nOUT: %s\n' %
+                       (basic_block.id,
+                        dom.to_string(ins[basic_block]),
+                        dom.to_string(outs[basic_block])))
+        return result
+
 
 if __name__ == '__main__':
 
 
-    a1 = Assignment('x', [2])
-    a2 = Assignment('y', ['+', 'y', 2])
-    a3 = Assignment('x', ['+', 'x', 1])
-    a4 = Assignment('c', ['<', 'y', 'x'])
-    a5 = Assignment('d', ['==', 'y', 2])
+    # program:
+    #
+    # int x = 0;
+    # int y = 0;
+    # while (x < 100)
+    # {
+    #    x++;
+    #    y++;
+    # }
+    
 
+    a1 = Assignment('x', [0])
+    a2 = Assignment('y', [0])
+    a3 = Assignment('x', ['+', 'x', 1])
+    a4 = Assignment('y', ['+', 'y', 1])
+    
     b1 = BasicBlock(1, [a1, a2])
-    b2 = BasicBlock(2, [a3, a4])
-    b3 = BasicBlock(3, [a5])
+    b2 = BasicBlock(2, [])
+    b3 = BasicBlock(3, [a3, a4])
+    b4 = BasicBlock(4, [])
     
-    
-    cfg = MethodCFG(b1, b3)
+    cfg = MethodCFG(b1, b4)
     cfg.add_block(b2)
+    cfg.add_block(b3)
+    
     cfg.set_edge(b1, b2, None)
-    cfg.set_edge(b2, b3, ['>=', 'x', 'y'])
-    cfg.set_edge(b2, b1, ['<', 'x', 'y'])
+    cfg.set_edge(b2, b3, ['<', 'x', 100])
+    cfg.set_edge(b3, b2, None)
+    cfg.set_edge(b2, b4, ['>=', 'x', 100])
     
     print('%s' % cfg)
     cfg.prepare()
     print cfg.forward_computation_sequence
+    dom = dbms.DBMFactory(-1024, 1024)
+    dom.add_constant(0)
+    dom.add_constant(100)
+    
+    dom.add_integer_var('x', -1024, 1024)
+    dom.add_integer_var('y', -1024, 1024)
+    
+    cfg.forward(dom, dom.get_top(), dom.get_bot(), 15)
+    print cfg.values_to_string(cfg.in_values, cfg.out_values)

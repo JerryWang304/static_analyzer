@@ -19,54 +19,56 @@ class DBM(WeightedGraph):
         self.incomings = {}
 
     def copy(self):
+        ''' Return a copy of the DBM. '''
         result = DBM()
         result.outgoings = {}
         for node in self.outgoings:
-            result.outgoings[node] = []
-            for (weight, target) in self.outgoings[node]:
-                result.outgoings[node].append((weight, target))
+            result.outgoings[node] = set(self.outgoings[node])
         result.incomings = {}
         for node in self.incomings:
-            result.incomings[node] = []
-            for (source, weight) in self.incomings[node]:
-                result.incomings[node].append((source, weight))
+            result.incomings[node] = set(self.incomings[node])
         return result
 
     def set_weight(self, source, weight, target):
+        ''' Set the weight between source and target to weight. Can also
+        be None (= infinite weight). '''
         if source not in self.outgoings:
-            self.outgoings[source] = []
-            self.incomings[source] = []
+            self.outgoings[source] = set()
+            self.incomings[source] = set()
         if target not in self.outgoings:
-            self.outgoings[target] = []
-            self.incomings[target] = []
+            self.outgoings[target] = set()
+            self.incomings[target] = set()
         found = False
         for (existing_weight, existing_target) in self.outgoings[source]:
             if existing_target == target:
                 self.outgoings[source].remove((existing_weight, existing_target))
                 if weight is not None:
-                    self.outgoings[source].append((weight, target))
+                    self.outgoings[source].add((weight, target))
                 found = True
                 break
         if not found and weight is not None:
-            self.outgoings[source].append((weight, target))
+            self.outgoings[source].add((weight, target))
         found = False
         for (existing_source, existing_weight) in self.incomings[target]:
             if existing_source == source:
                 self.incomings[target].remove((existing_source, existing_weight))
                 if weight is not None:
-                    self.incomings[target].append((source, weight))
+                    self.incomings[target].add((source, weight))
                 found = True
                 break
         if not found and weight is not None:
-            self.incomings[target].append((source, weight))
+            self.incomings[target].add((source, weight))
     
     def all_nodes(self):
-        return self.outgoings.keys()
+        ''' Get a copy of the list of all occuring nodes. '''
+        return self.outgoings.keys()[:]
 
     def incomings(self, node):
+        ''' Get all incoming edges from node. '''
         return self.incomings[node]
     
     def outgoings(self, node):
+        ''' Get all outgoing edges from node. '''
         return self.outgoings[node]
 
     def get_weight(self, source, target):
@@ -78,17 +80,16 @@ class DBM(WeightedGraph):
             if existing_target == target:
                 return weight
         return None
-
+    
     def exists_negative_cycle(self):
+        ''' Return true if a negative cycle exists in the DBM. '''
         # add an artificial node None
         distance = {}
         predecessor = {}
-        # Use Bellman-Ford
-        
+        # Apply Bellman-Ford algorithm
         self.set_weight(None, 0, None)
         # side effect: None is added as known node,
         # no problem with iteration over self.outgoings
-        
         for node in self.outgoings:
             self.set_weight(None, 0, node)
             # init dicts
@@ -129,7 +130,7 @@ class DBM(WeightedGraph):
         return negative_cycle
                 
     def find_shortest_paths(self):
-        # Return a dbm with shortest path as entries
+        ''' Return a DBM with shortest path weights as entries. '''
         sp = self.copy()
         i = 1
 
@@ -174,3 +175,22 @@ class DBM(WeightedGraph):
                 result += '%s <=(%s)= %s\n' % (node, weight, source)
         return result
     
+    def __hash__(self):
+        ''' Return a hash value for DBM. '''
+        p = 997
+        a = 123
+        hash = 0
+        for source in self.outgoings:
+            hash = (hash + a) % p
+            for (weight, target) in self.outgoings[source]:
+                if weight:
+                    hash = (hash + weight*a) %  p
+                    # hash = (hash + hash(target)*a) % p
+        return hash
+
+    def __eq__(self, other):
+        ''' Return True iff other is self. '''
+        if isinstance(other, self.__class__):
+            return self.outgoings == other.outgoings
+        else:
+            return False

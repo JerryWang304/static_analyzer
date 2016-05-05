@@ -12,10 +12,10 @@ import numbers
 
 class BoxDomainFactory(domain_factory.DomainFactory):
 
-    def __init__(self, DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE):
+    def __init__(self, DEFAULT_MIN_VALUE, DEFAULT_MAX_VALUE):
         self.variables = {}
-        self.DEFAULT_MAX_VALUE = DEFAULT_MAX_VALUE
         self.DEFAULT_MIN_VALUE = DEFAULT_MIN_VALUE
+        self.DEFAULT_MAX_VALUE = DEFAULT_MAX_VALUE
         self.constants = []
 
     # Private methods
@@ -114,9 +114,12 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         
     # Variable handling
 
-    def add_integer_var(self, variable, max_val, min_val):
-        self.variables[variable] = (max_val, min_val)
+    def add_integer_var(self, variable, min_val, max_val):
+        self.variables[variable] = (min_val, max_val)
 
+    def add_bool_var(self, variable):
+        self.add_integer_var(variable, 0, 1)
+        
     # I/O
 
     def to_string(self, element):
@@ -162,7 +165,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         return True
 
     def is_eq(self, element1, element2):
-        return self.is_subseteq(element1, element2) and self.is_subseteq(element2, element1)
+        return (self.is_subseteq(element1, element2)
+                and self.is_subseteq(element2, element1))
 
     def union(self, element1, element2):
         result = {}
@@ -208,7 +212,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             if (l1 > l2):
                 matching_constant = None
                 for constant in self.constants:
-                    if constant < l2:
+                    print constant
+                    if constant <= l2:
                         if (matching_constant is None or
                             matching_constant < constant):
                             matching_constant = constant
@@ -220,7 +225,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             if (r2 > r1):
                 matching_constant = None
                 for constant in self.constants:
-                    if constant > r2:
+                    print constant
+                    if constant >= r2:
                         if (matching_constant is None or
                             matching_constant > constant):
                             matching_constant = constant
@@ -328,6 +334,17 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             result[right_var] = new_i2
         
         return self._normalize(result)
+
+    def hash(self, element):
+        p = 997
+        a = 123
+        if element is None:
+            return 0
+        result = 0
+        for v in element.variables:
+            result = (result + self._interval(element, v)[0]*a) % p
+            result = (result + self._interval(element, v)[1]*a) % p
+        return result
     
 #    def set_interval(self, element, variable, l, r):
 #        result = self._copy(element)

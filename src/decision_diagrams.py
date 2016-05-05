@@ -157,6 +157,36 @@ class DecisionDiagramFactory(DomainFactory):
                                               variable,
                                               value))
 
+    def _keep_one_branch(self, element, variable, value):
+        assert value in (0, 1)
+        if (element.is_leaf() or
+            self._var_predecessor(variable, element.get_variable())):
+            if value == 0:
+                return self._mk(variable, self._bot, element)
+            else:
+                return self._mk(variable, element, self._bot)
+        else:
+            element_var = element.get_variable()
+            if element_var == variable:
+                if value == 0:
+                    return self._mk(variable,
+                                    self._bot,
+                                    element.get_lo())
+                else:
+                    return self._mk(variable,
+                                    element.get_hi(),
+                                    self._bot)
+            else:
+                # variable < element_var
+                return self._mk(element_var,
+                                self._keep_one_branch(element.get_hi(),
+                                                      variable,
+                                                      value),
+                                self._keep_one_branch(element.get_lo(),
+                                                      variable,
+                                                      value))
+
+            
     def _negate_operator(self, op):
         if (op == '=='):
             return '!='
@@ -193,8 +223,8 @@ class DecisionDiagramFactory(DomainFactory):
             return self._mk(variable, hi, lo)
         else:
             # propagate to the leaves
-            hi = self._propagate(element.get_hi(), pos_transformer, neg_transformer)
-            lo = self._propagate(element.get_lo(), pos_transformer, neg_transformer)
+            hi = self._propagate(element.get_hi(), variable, pos_transformer, neg_transformer)
+            lo = self._propagate(element.get_lo(), variable, pos_transformer, neg_transformer)
             return self._mk(element.get_variable(), hi, lo)
 
             
@@ -363,7 +393,14 @@ class DecisionDiagramFactory(DomainFactory):
                     operator,
                     op1,
                     op2):
-        # TODO: right now only numerical comparisons
+        # most important special case: comparison for 1 / 0 of
+        # boolean variable
+        if op1 in self.variables:
+            if (operator == '==' and op2 in (0, 1)):
+                return self._keep_one_branch(element, op1, op2)
+            elif (operator == '!=' and op2 in (0, 1)):
+                return self._keep_one_branch(element, op1, 1-op2)
+            
         transformer = (lambda x:
                        self.inner_factory.cond_binary(x,
                                                       operator,
@@ -372,32 +409,3 @@ class DecisionDiagramFactory(DomainFactory):
         return self._transform_leaves(element, transformer)                      
 
 
-
-from dbms import *
-
-# TEST CASE:
-#
-# c1, c2
-# x1, x2
-
-# c1 = x1 < 5
-# c2 = x1 >= x2
-
-##########################
-
-inner = DBMFactory(-100, 100)
-inner.add_integer_var('x1', -512, 512)
-inner.add_integer_var('x2', -512, 512)
-
-domain = DecisionDiagramFactory(inner)
-domain.add_bool_var('c1')
-domain.add_bool_var('c2')
-
-
-e1 = domain.get_top()
-e1 = domain.op_binary(e1, '<', 'c1', 'x1', 5)
-print domain.to_string(e1)
-e2 = domain.cond_binary(e1, '>=', 'x1', 'x2')
-print domain.to_string(e2)
-e3 = domain._set_to(e2, 'c1', 1) 
-print domain.to_string(e3)

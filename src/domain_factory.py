@@ -16,11 +16,18 @@ class DomainFactory(object):
     # Variable handling
     
     @abc.abstractmethod
-    def add_integer_var(self, variable, max_val, min_val):
+    def add_integer_var(self, variable, min_val, max_val):
         ''' Add a integer variable to the factory, 
         variable being its unique identifier. '''
         return
 
+    @abc.abstractmethod
+    def add_bool_var(self, variable):
+        ''' Add a boolean variable to the factory, 
+        variable being its unique identifier. '''
+        return
+
+    
     # I/O
 
     @abc.abstractmethod
@@ -85,5 +92,4 @@ class DomainFactory(object):
         ''' Return strongest postcondition of condition "op1 operator op2" applied
         to element. '''
         return
-        
         

@@ -50,7 +50,3 @@ class DecisionDiagram(object):
             return self.value
         else:
             return None
-
-    
-        
-                    
