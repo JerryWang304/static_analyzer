@@ -9,6 +9,8 @@
 
 import boxes
 import dbms
+import live_vars
+import assignments
 
 class ComputationComponent(object):
 
@@ -29,15 +31,6 @@ class ComputationComponent(object):
         return self._sequence
 
     
-class Assignment(object):
-
-    def __init__(self, target_object, rhs):
-        self.target = target_object
-        self.rhs = rhs
-
-    def __str__(self):
-        return '%s := %s' % (self.target, self.rhs)
-    
 class BasicBlock(object):
 
     def __init__(self, id, assignments):
@@ -50,7 +43,8 @@ class BasicBlock(object):
             result += '%s;' % assignment
         result += ' ]'
         return result
-        
+
+    
 class FlowEdge(object):
 
     def __init__(self, label):
@@ -58,6 +52,7 @@ class FlowEdge(object):
 
     def __str__(self):
         return 'EDGE:%s' % self.label
+
     
 class MethodCFG(object):
     
@@ -153,45 +148,58 @@ class MethodCFG(object):
         self.forward_computation_sequence = self.compute_bourdoncle_widenpoints(reverse=False)
         self.backward_computation_sequence = self.compute_bourdoncle_widenpoints(reverse=True)
 
-    # evaluate an assignment
-    # TODO: make this more extensible!
-    def _apply_assignment(self, assignment, value):
-        target = assignment.target
-        rhs = assignment.rhs
-        # case distinction:
-        if len(rhs) == 1:
-            # constant or variable
-            op1 = rhs[0]
-            return dom.op_binary(value,
-                                 '+',
-                                 target,
-                                 op1,
-                                 0)
-        elif len(rhs) == 3:
-            (operator, op1, op2) = rhs
-            return dom.op_binary(value,
-                                 operator,
-                                 target,
-                                 op1,
-                                 op2)
 
-    def _apply_condition(self, condition, value):
-        (operator, op1, op2) = condition
-        return dom.cond_binary(value,
-                               operator,
-                               op1,
-                               op2)
         
-    def forward(self,
+    def analyze(self,
                 dom,
                 head_init_element,
                 ordinary_init_element,
+                analyze_forward = True,
                 iterations_without_widening = 5):
-        ins = {}
-        outs = {}
+        ins, outs = {}, {}
+        head = self.init_loc if analyze_forward else self.end_loc
+        sequence = (self.forward_computation_sequence
+                    if analyze_forward
+                    else self.backward_computation_sequence)
         for loc in self.control_locs:
-            ins[loc] = head_init_element if loc == self.init_loc else ordinary_init_element
-            outs[loc] = ordinary_init_element
+            if analyze_forward:
+                ins[loc] = (head_init_element
+                            if loc == head
+                            else ordinary_init_element)
+                outs[loc] = ordinary_init_element
+            else:
+                outs[loc] = (head_init_element
+                             if loc == head
+                             else ordinary_init_element)
+                ins[loc] = ordinary_init_element
+                
+        # TODO: make this more extensible!
+        def _apply_assignment(assignment, value):
+            target = assignment.target
+            rhs = assignment.rhs
+            # case distinction:
+            if len(rhs) == 1:
+                # constant or variable
+                op1 = rhs[0]
+                return dom.op_binary(value,
+                                     '+',
+                                     target,
+                                     op1,
+                                     0)
+            elif len(rhs) == 3:
+                (operator, op1, op2) = rhs
+                return dom.op_binary(value,
+                                     operator,
+                                     target,
+                                     op1,
+                                     op2)
+
+        def _apply_condition(condition, value):
+            (operator, op1, op2) = condition
+            return dom.cond_binary(value,
+                                   operator,
+                                   op1,
+                                   op2)
 
         def stabilize(component):
             widen_count = 0
@@ -208,35 +216,49 @@ class MethodCFG(object):
                     if isinstance(element, ComputationComponent):
                         stabilize(element)
                     else:
-                        new_input = ins[element]
+                        new_input = ins[element] if analyze_forward else outs[element]
                         # single element
-                        for source in self.in_edges[element]:
-                            current_edge = self.edges[(source, element)]
+                        edges = self.in_edges[element] if analyze_forward else self.out_edges[element]
+                        for neighbour in edges:
+                            current_edge = (self.edges[(neighbour, element)]
+                                            if analyze_forward
+                                            else self.edges[(element, neighbour)])
                             # is there a condition?
                             condition = current_edge.label
+                            neighbour_element = outs[neighbour] if analyze_forward else ins[neighbour]
                             new_input = dom.union(new_input,
-                                                  (self._apply_condition(condition,
-                                                                         outs[source])
-                                                   if (condition is not None) else outs[source]))
+                                                  (_apply_condition(condition,
+                                                                    neighbour_element)
+                                                   if (condition is not None) else neighbour_element))
                         # compute output                  
                         new_output = new_input
-                        for assignment in element.assignments:
-                            new_output = self._apply_assignment(assignment,  new_output)
+                        if analyze_forward:
+                            for assignment in element.assignments:
+                                new_output = _apply_assignment(assignment, new_output)
+                        else:
+                            for assignment in reversed(element.assignments):
+                                new_output = _apply_assignment(assignment, new_output)
+                        old_element = outs[element] if analyze_forward else ins[element]
                         if element == widen_loc:
                             if widen_count >= iterations_without_widening:
-                                new_output = dom.widen(outs[element], new_output)
+                                new_output = dom.widen(old_element, new_output)
                             else:
                                 widen_count += 1
-                        decreasing = dom.is_subseteq(new_output, outs[element])
-                        outs[element] = new_output
-                        ins[element] = new_input
+                        decreasing = dom.is_subseteq(new_output, old_element)
+                        if analyze_forward:
+                            outs[element] = new_output
+                            ins[element] = new_input
+                        else:
+                            ins[element] = new_output
+                            outs[element] = new_input
+                            
                         # print self.values_to_string(ins, outs)
 
-        stabilize(self.forward_computation_sequence)
+        stabilize(sequence)
         self.in_values = ins
         self.out_values = outs
 
-    def values_to_string(self, ins, outs):
+    def values_to_string(self, dom, ins, outs):
         assert ins
         assert outs
         result = ''
@@ -259,37 +281,43 @@ if __name__ == '__main__':
     # {
     #    x++;
     #    y++;
-    # }
-    
+    # }    
 
-    a1 = Assignment('x', [0])
-    a2 = Assignment('y', [0])
-    a3 = Assignment('x', ['+', 'x', 1])
-    a4 = Assignment('y', ['+', 'y', 1])
-    
+    a1 = DirectAssignment('x', [0])
+    a2 = DirectAssignment('y', [0])
+    a3 = DirectAssignment('x', ['+', 'x', 1])
+    a4 = DirectAssignment('y', ['+', 'y', 1])
+    a5 = DirectAssignment('x', ['+', 'y', 1])
+    a6 = DirectAssignment('z', ['+', 'y', 1])
+    a7 = DirectAssignment('z', ['+', 'z', 1])
+
     b1 = BasicBlock(1, [a1, a2])
-    b2 = BasicBlock(2, [])
+    b2 = BasicBlock(2, [a6])
     b3 = BasicBlock(3, [a3, a4])
-    b4 = BasicBlock(4, [])
-    
+    b4 = BasicBlock(4, [a7, a5])
     cfg = MethodCFG(b1, b4)
     cfg.add_block(b2)
     cfg.add_block(b3)
-    
     cfg.set_edge(b1, b2, None)
     cfg.set_edge(b2, b3, ['<', 'x', 100])
     cfg.set_edge(b3, b2, None)
     cfg.set_edge(b2, b4, ['>=', 'x', 100])
     
-    print('%s' % cfg)
     cfg.prepare()
     print cfg.forward_computation_sequence
-    dom = dbms.DBMFactory(-1024, 1024)
-    dom.add_constant(0)
-    dom.add_constant(100)
+    #dom = dbms.DBMFactory(-1024, 1024)
+    
+    #dom.add_constant(0)
+    #dom.add_constant(100)
+    dom = live_vars.LiveVarsDomainFactory()
     
     dom.add_integer_var('x', -1024, 1024)
     dom.add_integer_var('y', -1024, 1024)
+    dom.add_integer_var('z', -1024, 1024)
     
-    cfg.forward(dom, dom.get_top(), dom.get_bot(), 15)
-    print cfg.values_to_string(cfg.in_values, cfg.out_values)
+    init = dom.get_bot()
+    
+    init = dom.op_binary(init, '+', 'y', 'x', 0)
+    print dom.to_string(init)
+    cfg.analyze(dom, init, dom.get_bot(), False, 15)
+    print cfg.values_to_string(dom, cfg.in_values, cfg.out_values)

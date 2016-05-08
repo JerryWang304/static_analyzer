@@ -26,7 +26,6 @@ class DomainFactory(object):
         ''' Add a boolean variable to the factory, 
         variable being its unique identifier. '''
         return
-
     
     # I/O
 
@@ -52,12 +51,14 @@ class DomainFactory(object):
     def is_subseteq(self, element1, element2):
         ''' Return true iff "element1 <= element2" for two
         abstract elements, "<=" being the abstract partial order. '''
-
+        return
+    
     @abc.abstractmethod
     def is_eq(self, element1, element2):
         ''' Return true iff both elements are representing
         the same set of concrete states. '''
-
+        return
+    
     @abc.abstractmethod
     def union(self, element1, element2):
         ''' Return the abstract union of "element1" and "element2". '''

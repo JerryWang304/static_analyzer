@@ -196,7 +196,7 @@ class DBMFactory(domain_factory.DomainFactory):
         #elif len(element.variables) == 0:
         #    return '<TOP>'
         is_top = True
-        result = '[\n'
+        result = '['
         first = True
         for v1 in self.variables:
             for v2 in self.variables:
@@ -207,7 +207,7 @@ class DBMFactory(domain_factory.DomainFactory):
                     first = False
                     result += "%s - %s <= %s" % (v1, v2, d)
                     is_top = False
-        result += ']\n'
+        result += ']'
         if is_top:
             result = '<TOP>'
         return result
