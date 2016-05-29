@@ -2,7 +2,7 @@
 #
 # type_system.py 
 #
-# Type system of the analyzer.
+# Type system of the analyzer
 #
 # (C) 2016, Andreas Gaiser
 ##############################
@@ -36,6 +36,8 @@ class Integer(Type):
         else:
             return False
 
+    def is_bool_type(self):
+        return self.min_value, self.max_value == 0, 1
 
 class Pointer(Type):
 
@@ -58,7 +60,7 @@ class Pointer(Type):
 
 class TypeStore():
     ''' Serves as a cache for types. Use register(t)
-    for a newly created type to get the actual "canonical" type 
+    for a newly created type t to get the actual "canonical" type 
     object. '''
 
     def __init__(self):

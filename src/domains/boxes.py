@@ -101,7 +101,6 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                     (cl, cr) = (0, max_el)
                 else:
                     (cl, cr) = (-max_el, max_el)
-                    
             if l2 <= 0 and 0 <= r2:
                 print "Possible Division by zero!"
         else:
@@ -212,7 +211,6 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             if (l1 > l2):
                 matching_constant = None
                 for constant in self.constants:
-                    print constant
                     if constant <= l2:
                         if (matching_constant is None or
                             matching_constant < constant):
@@ -225,7 +223,6 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             if (r2 > r1):
                 matching_constant = None
                 for constant in self.constants:
-                    print constant
                     if constant >= r2:
                         if (matching_constant is None or
                             matching_constant > constant):
@@ -246,6 +243,17 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         result = self._copy(element)
         # TODO: what if constant not in range(variable)?
         result[target_var] = (constant, constant)
+        return self._normalize(result)
+
+    def op_load_variable(self, element, target_var, source_var):
+        if element is None:
+            return None
+        result = self._copy(element)
+        # TODO: what if constant not in range(variable)?
+        if source_var in result:
+            result[target_var] = element[source_var]
+        else:
+            del result[target_var] # no info for source_var
         return self._normalize(result)
     
     def op_binary(self,
@@ -277,7 +285,6 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                     op2):
         if element is None:
             return None
-
         if operator == '>' :
             return self.cond_binary(element, '<', op2, op1)
         elif operator == '>=' :
@@ -297,10 +304,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         else:
             i2 = self._interval(element, op2)
             right_var = op2
-            
         (l1, r1) = i1
         (l2, r2) = i2
-        
         if operator == '==':
             buffer = self._intersect((l1, r1), (l2, r2))
             if buffer is None:
@@ -310,7 +315,6 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                 return None
             if (l1 - r1) == 0 and (l2-r2) == 0 and (l1 == l2):
                 return None
-
         new_i1 = None
         new_i2 = None
         if operator == '<=':
@@ -327,14 +331,20 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             new_i2 = (max(l1, l2+1), r2)
         else:
             print 'Unknown operator: %s ' % operator
-            
         if new_i1 and left_var:
             result[left_var] = new_i1
         if new_i2 and right_var:
             result[right_var] = new_i2
-        
         return self._normalize(result)
 
+    def project_var(self, element, variable):
+        result = self._copy(element)
+        if result is None:
+            return result
+        if variable in result:
+            del result[variable]
+        return result
+    
     def hash(self, element):
         p = 997
         a = 123

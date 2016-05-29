@@ -81,6 +81,12 @@ class DomainFactory(object):
         ''' Return strongest postcondition of "target_var := constant" applied
         to element. '''
         return
+
+    @abc.abstractmethod
+    def op_load_variable(self, element, target_var, source_var):
+        ''' Return strongest postcondition of "target_var := source_var" applied
+        to element. '''
+        return
     
     @abc.abstractmethod
     def op_binary(self, element, operator, target_var, op1, op2):
@@ -94,3 +100,7 @@ class DomainFactory(object):
         to element. '''
         return
         
+    @abc.abstractmethod
+    def project_var(self, element, variable):
+        ''' Remove information about variable. '''
+        return

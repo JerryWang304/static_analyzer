@@ -186,6 +186,25 @@ class DecisionDiagramFactory(DomainFactory):
                                                       variable,
                                                       value))
 
+    def _project_variable(self, element, variable):
+        assert value in (0, 1)
+        if (element.is_leaf() or
+            self._var_predecessor(variable, element.get_variable())):
+            return element
+        else:
+            element_var = element.get_variable()
+            if element_var == variable:
+                return self.union(element.get_lo(),
+                                  element.get_hi())
+            else:
+                # variable < element_var
+                return self._mk(element_var,
+                                self._project_variable(element.get_hi(),
+                                                       variable,
+                                                       value),
+                                self._project_variable(element.get_lo(),
+                                                       variable,
+                                                       value))
             
     def _negate_operator(self, op):
         if (op == '=='):
@@ -346,10 +365,32 @@ class DecisionDiagramFactory(DomainFactory):
             return self._set_to(element, target_var, constant)
         else:
             return self._mk_op_leaves(element,
-                                      lambda x: self.inner_factory.load_constant(x, target_var, constant))
+                                      lambda x: \
+                                      self.inner_factory.load_constant\
+                                      (x, target_var, constant))
 
     def _is_boolean_operator(self, op):
         return op in [ "==", "!=", "<", "<=", ">", ">=" ]
+
+    def op_load_variable(self, element, target_var, source_var):
+        if variable in self.variables:
+            # first: project
+            buffer = self._project_variable(element, target_var)
+            # now: add constraint "target_var <=> source_var"
+            constraint_diagram = None
+            if self._var_predecessor(target_var, source_var):
+                var_a, var_b = target_var, source_var
+            else:
+                var_a, var_b = source_var, target_var
+                
+            constraint_diagram = self._mk(var_a,
+                                          self._mk(var_b, self._top, self._bot),
+                                          self._mk(var_b, self._bot, self._top))
+            return self.intersect(buffer, constraint_diagram)
+        else:
+            return self._transform_leaves\
+                (element, lambda v: \
+                 inner_factory.load_variable(v, target_var, source_var))
         
     def op_binary(self,
                   element,
@@ -377,7 +418,6 @@ class DecisionDiagramFactory(DomainFactory):
                                    target_var,
                                    pos_transformer,
                                    neg_transformer)
-
         else:
             transformer = (lambda x:
                            self.inner_factory.op_binary(x,
@@ -400,7 +440,6 @@ class DecisionDiagramFactory(DomainFactory):
                 return self._keep_one_branch(element, op1, op2)
             elif (operator == '!=' and op2 in (0, 1)):
                 return self._keep_one_branch(element, op1, 1-op2)
-            
         transformer = (lambda x:
                        self.inner_factory.cond_binary(x,
                                                       operator,
@@ -408,4 +447,11 @@ class DecisionDiagramFactory(DomainFactory):
                                                       op2))
         return self._transform_leaves(element, transformer)                      
 
-
+    def project_var(self,
+                    element,
+                    variable):
+        if variable in self.variables:
+            return self._project_variable(element, variable)
+        else:
+            return self._transform_leaves\
+                (element, lambda v: inner_factory.project_var(v, variable))
