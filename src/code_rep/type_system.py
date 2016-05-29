@@ -37,7 +37,7 @@ class Integer(Type):
             return False
 
     def is_bool_type(self):
-        return self.min_value, self.max_value == 0, 1
+        return (self.min_value, self.max_value) == (0, 1)
 
 class Pointer(Type):
 

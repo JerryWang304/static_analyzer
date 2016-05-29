@@ -187,7 +187,6 @@ class DecisionDiagramFactory(DomainFactory):
                                                       value))
 
     def _project_variable(self, element, variable):
-        assert value in (0, 1)
         if (element.is_leaf() or
             self._var_predecessor(variable, element.get_variable())):
             return element
@@ -200,11 +199,9 @@ class DecisionDiagramFactory(DomainFactory):
                 # variable < element_var
                 return self._mk(element_var,
                                 self._project_variable(element.get_hi(),
-                                                       variable,
-                                                       value),
+                                                       variable),
                                 self._project_variable(element.get_lo(),
-                                                       variable,
-                                                       value))
+                                                       variable))
             
     def _negate_operator(self, op):
         if (op == '=='):
@@ -245,8 +242,7 @@ class DecisionDiagramFactory(DomainFactory):
             hi = self._propagate(element.get_hi(), variable, pos_transformer, neg_transformer)
             lo = self._propagate(element.get_lo(), variable, pos_transformer, neg_transformer)
             return self._mk(element.get_variable(), hi, lo)
-
-            
+    
     def _mk_op_leaves(self, element, op):
         if element.is_leaf():
             return self._mk(op(element.get_value()), None, None)
@@ -373,7 +369,7 @@ class DecisionDiagramFactory(DomainFactory):
         return op in [ "==", "!=", "<", "<=", ">", ">=" ]
 
     def op_load_variable(self, element, target_var, source_var):
-        if variable in self.variables:
+        if target_var in self.variables:
             # first: project
             buffer = self._project_variable(element, target_var)
             # now: add constraint "target_var <=> source_var"
@@ -390,7 +386,7 @@ class DecisionDiagramFactory(DomainFactory):
         else:
             return self._transform_leaves\
                 (element, lambda v: \
-                 inner_factory.load_variable(v, target_var, source_var))
+                 self.inner_factory.op_load_variable(v, target_var, source_var))
         
     def op_binary(self,
                   element,
@@ -454,4 +450,4 @@ class DecisionDiagramFactory(DomainFactory):
             return self._project_variable(element, variable)
         else:
             return self._transform_leaves\
-                (element, lambda v: inner_factory.project_var(v, variable))
+                (element, lambda v: self.inner_factory.project_var(v, variable))

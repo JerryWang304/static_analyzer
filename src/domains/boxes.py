@@ -10,6 +10,41 @@
 import domain_factory
 import numbers
 
+class BoxesElement:
+
+    def __init__(self, init_ranges):
+        self.ranges = init_ranges
+
+    def __hash__(self):
+        p = 997
+        a = 123
+        if self.ranges is None:
+            return 0
+        result = 0
+        for v in sorted(self.ranges.keys()):
+            result = (result + self.ranges[v][0]*a) % p
+            result = (result + self.ranges[v][1]*a) % p
+        return result
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            if self.ranges is None and other.ranges is None:
+                return True
+            elif self.ranges is None or other.ranges is None:
+                return False
+            else:
+                if len(self.ranges) != len(other.ranges):
+                    return False
+                else:
+                    for v in self.ranges:
+                        if v not in other.ranges:
+                            return False
+                        if other.ranges[v] != self.ranges[v]:
+                            return False
+            return True
+        else:
+            return False
+
 class BoxDomainFactory(domain_factory.DomainFactory):
 
     def __init__(self, DEFAULT_MIN_VALUE, DEFAULT_MAX_VALUE):
@@ -17,7 +52,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         self.DEFAULT_MIN_VALUE = DEFAULT_MIN_VALUE
         self.DEFAULT_MAX_VALUE = DEFAULT_MAX_VALUE
         self.constants = []
-
+        self._bot = BoxesElement(None)
     # Private methods
         
     def _union(self, tuple1, tuple2):
@@ -33,35 +68,29 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         return (max(l1, l2), min(r1, r2))
         
     def _interval(self, element, variable):
-        if element is None:
+        if element.ranges is None:
             return None
-        if variable in element:
-            return element[variable]
+        if variable in element.ranges:
+            return element.ranges[variable]
         else:
             return self.variables[variable]
 
     def _normalize(self, element):
-        if element is None:
-            return None
+        if element.ranges is None:
+            return element
         result = self._copy(element)
-        for variable in element:
-            if element[variable] == self.variables[variable]:
-                del result[variable]
+        for variable in element.ranges:
+            if element.ranges[variable] == self.variables[variable]:
+                del result.ranges[variable]
         return result
 
     def _copy(self, element):
-        if element is None:
-            return None
-        result = {}
-        for variable in element:
-            result[variable] = element[variable]
+        if element.ranges is None:
+            return element
+        result = BoxesElement({})
+        for variable in element.ranges:
+            result.ranges[variable] = element.ranges[variable]
         return result
-
-    def _is_in(self, scalar, element):
-        if element is None:
-            return False
-        (l, r) = element
-        return (l <= scalar and r >= scalar)
 
     def _is_literal(self, value):
         return isinstance(value, numbers.Number) 
@@ -72,8 +101,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                             target_var,
                             interval1,
                             interval2):
-        if element is None:
-            return None
+        if element.ranges is None:
+            return element
         result = self._copy(element)
         # todo: what if result not in range?
         (l1, r1) = interval1
@@ -106,9 +135,9 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         else:
             print 'Wrong operator!'
         if cl is not None or cr is not None:
-            result[target_var] = (cl, cr)
+            result.ranges[target_var] = (cl, cr)
         else:
-            result[target_var] = self.variables[target_var]
+            result.ranges[target_var] = self.variables[target_var]
         return self._normalize(result)
         
     # Variable handling
@@ -122,17 +151,17 @@ class BoxDomainFactory(domain_factory.DomainFactory):
     # I/O
 
     def to_string(self, element):
-        if element is None:
+        if element.ranges is None:
             return '<BOT>'
-        elif len(element) == 0:
+        elif len(element.ranges) == 0:
             return '<TOP>'
         result = '['
-        keys_sorted = sorted(element.keys())
+        keys_sorted = sorted(element.ranges.keys())
         for variable in keys_sorted:
             result += ('%s in [%s, %s], '
                        % (variable,
-                          element[variable][0],
-                          element[variable][1]))
+                          element.ranges[variable][0],
+                          element.ranges[variable][1]))
         if result.endswith(', '):
             result = result[:-2]
         result += ']'
@@ -141,24 +170,24 @@ class BoxDomainFactory(domain_factory.DomainFactory):
     # Algebraic operations
     
     def get_top(self):
-        return {}
+        return BoxesElement({})
 
     def get_bot(self):
-        return None
+        return self._bot
 
     def add_constant(self, constant):
         self.constants.append(constant)
         self.constants = sorted(self.constants)
     
     def is_subseteq(self, element1, element2):
-        if element1 is None:
+        if element1.ranges is None:
             return True
-        if element2 is None:
+        if element2.ranges is None:
             return False
-        for variable in element2:
-            (l2, r2) = element2[variable]
-            if variable in element1:
-                (l1, r1) = element1[variable]
+        for variable in element2.ranges:
+            (l2, r2) = element2.ranges[variable]
+            if variable in element1.ranges:
+                (l1, r1) = element1.ranges[variable]
                 if not (l2 <= l1 and r2 >= r1):
                     return False
         return True
@@ -168,14 +197,14 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                 and self.is_subseteq(element2, element1))
 
     def union(self, element1, element2):
-        result = {}
-        if element1 is None:
+        result = BoxesElement({})
+        if element1.ranges is None:
             return self._copy(element2)
-        elif element2 is None:
+        elif element2.ranges is None:
             return self._copy(element1)
-        for variable in element1:
-            if variable in element2:
-                result[variable] \
+        for variable in element1.ranges:
+            if variable in element2.ranges:
+                result.ranges[variable] \
                     = self._union(self._interval(element1, variable),
                                   self._interval(element2, variable))
         # if a variable is set in element2, it'll be
@@ -183,25 +212,27 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         return self._normalize(result)
 
     def intersect(self, element1, element2):
-        result = {}
-        if element1 is None or element2 is None:
-            return None
+        if element1.ranges is None:
+            return element1
+        elif element2.ranges is None:
+            return element2
+        result = BoxesElement({})
         for variable in element1:
-            result[variable] = element1[variable]
+            result.ranges[variable] = element1.ranges[variable]
 
         for variable in element2:
-            result[variable] \
+            result.ranges[variable] \
                 = self._intersect(self._interval(result, variable),
                                   self._interval(element2, variable))
-            if result[variable] is None:
+            if result.ranges[variable] is None:
                 return None
         return result
 
     def widen(self, element1, element2):
         result = self._copy(element2)
-        if element1 is None or element2 is None:
+        if element1.ranges is None or element2.ranges is None:
             return self._copy(element2)
-        for variable in element1:
+        for variable in element1.ranges:
             (l1, r1) = self._interval(element1, variable)
             (l2, r2) = self._interval(element2, variable)
             l = l2
@@ -232,28 +263,28 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                     r = matching_constant
                 else: 
                     r = v_max
-            result[variable] = (l, r)
+            result.ranges[variable] = (l, r)
         return self._normalize(result)
 
     # Semantics of the abstract machine
     
     def op_load_constant(self, element, target_var, constant):
-        if element is None:
-            return None
+        if element.ranges is None:
+            return self._bot
         result = self._copy(element)
         # TODO: what if constant not in range(variable)?
-        result[target_var] = (constant, constant)
+        result.ranges[target_var] = (constant, constant)
         return self._normalize(result)
 
     def op_load_variable(self, element, target_var, source_var):
         if element is None:
-            return None
+            return self._bot
         result = self._copy(element)
         # TODO: what if constant not in range(variable)?
-        if source_var in result:
-            result[target_var] = element[source_var]
+        if source_var in result.ranges:
+            result.ranges[target_var] = element.ranges[source_var]
         else:
-            del result[target_var] # no info for source_var
+            del result.ranges[target_var] # no info for source_var
         return self._normalize(result)
     
     def op_binary(self,
@@ -262,8 +293,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                   target_var,
                   op1,
                   op2):
-        if element is None:
-            return None
+        if element.ranges is None:
+            return self._bot
         if self._is_literal(op1):
             i1 = (op1, op1)
         else:
@@ -283,8 +314,8 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                     operator,
                     op1,
                     op2):
-        if element is None:
-            return None
+        if element.ranges is None:
+            return self._bot
         if operator == '>' :
             return self.cond_binary(element, '<', op2, op1)
         elif operator == '>=' :
@@ -309,7 +340,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         if operator == '==':
             buffer = self._intersect((l1, r1), (l2, r2))
             if buffer is None:
-                return None
+                return self._bot
         elif operator == '!=':
             if op1 == op2:
                 return None
@@ -332,34 +363,16 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         else:
             print 'Unknown operator: %s ' % operator
         if new_i1 and left_var:
-            result[left_var] = new_i1
+            result.ranges[left_var] = new_i1
         if new_i2 and right_var:
-            result[right_var] = new_i2
+            result.ranges[right_var] = new_i2
         return self._normalize(result)
 
     def project_var(self, element, variable):
         result = self._copy(element)
-        if result is None:
-            return result
-        if variable in result:
-            del result[variable]
+        if result.ranges is None:
+            return self._bot
+        if variable in result.ranges:
+            del result.ranges[variable]
         return result
-    
-    def hash(self, element):
-        p = 997
-        a = 123
-        if element is None:
-            return 0
-        result = 0
-        for v in element.variables:
-            result = (result + self._interval(element, v)[0]*a) % p
-            result = (result + self._interval(element, v)[1]*a) % p
-        return result
-    
-#    def set_interval(self, element, variable, l, r):
-#        result = self._copy(element)
-#        if element is None:
-#            result = {}
-#        result[variable] = (l, r)
-#        return self._normalize(result)
     

@@ -7,7 +7,6 @@
 # (C) 2016, Andreas Gaiser
 ###########################################
 
-
 import numbers
 import domain_factory
 import dbm
@@ -36,6 +35,7 @@ class DBMFactory(domain_factory.DomainFactory):
         right = element.get_weight(variable, 0)
         left = element.get_weight(0, variable)
         if right is None:
+            print "V: %s, %s" % (variable, self.variables)
             right = self.variables[variable][1]
         if left is None:
             left = self.variables[variable][0]
@@ -343,7 +343,10 @@ class DBMFactory(domain_factory.DomainFactory):
         result = self._forget_destructive(element.copy(), target_var)
         return self._guard(self._guard(result, target_var, 0, constant),
                            0, target_var, -constant)
-    
+
+    def op_load_variable(self, element, target_var, source_var):
+        return self.op_binary(element, '+', target_var, source_var, 0)
+        
     def op_binary(self,
                   element,
                   operator,
@@ -430,3 +433,14 @@ class DBMFactory(domain_factory.DomainFactory):
             return self._guard(element, op1, 0, op2 + offset)
         else:
             return self._guard(element, op1, op2, offset)
+
+    def project_var(self, element, variable):
+        # remove entries related to variable  
+        if element is None:
+            return None
+        buffer = self._copy(element)
+        for v in self.variables:
+            if v != variable:
+                buffer.set_weight(v, None, variable)
+                buffer.set_weight(variable, None, v)
+        return buffer
