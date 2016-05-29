@@ -153,11 +153,12 @@ class MethodAnalyzer(object):
                                 # first: propagate inputs
                                 self._module_analyzer.perform_call(invocation,
                                                                    neighbour_element)
+                                value_from_call = self._module_analyzer.perform_return(
+                                        invocation=invocation)
                                 # get the return value
                                 new_input = self._dom.union(
                                     new_input,
-                                    self._module_analyzer.perform_return(
-                                        invocation=invocation))
+                                    value_from_call)
                                 continue
                             # else: is there a condition?
                             condition = current_edge.condition
@@ -168,6 +169,7 @@ class MethodAnalyzer(object):
                                     neighbour_element)
                                  if (condition is not None)
                                  else neighbour_element))
+                        # new input computed, now: compute the output
                         new_output = new_input
                         if analyze_forward:
                             for instruction in element.instructions:
@@ -188,9 +190,9 @@ class MethodAnalyzer(object):
                                                              new_output)
                             else:
                                 widen_count += 1
-                        decreasing = self._dom.is_subseteq(
-                            new_output,
-                            old_element)
+                            decreasing = self._dom.is_subseteq(
+                                new_output,
+                                old_element)
                         if analyze_forward:
                             outs[element] = new_output
                             ins[element] = new_input
@@ -231,16 +233,15 @@ class Module0CFAForwardAnalyzer(object):
         if invoked.return_variable and invocation.target_var:
             # TODO: type check
             # TODO: direct assignment in dom
-            element = self._dom.op_binary(element,
-                                          '+',
-                                          invocation.target_var,
-                                          invoked.return_variable,
-                                          0)
+            element = self._dom.op_load_variable(element,
+                                              invocation.target_var,
+                                              invoked.return_variable)
         # remove vars of the invoked
-        for var in invoked.parameters:
-            element = self._dom.project_var(element, var)
-        for var in invoked.local_variables():
-            element = self._dom.project_var(element, var)
+        # TODO: seems strange, when we use *recursion*
+        #for var in invoked.parameters:
+        #    element = self._dom.project_var(element, var)
+        #for var in invoked.local_variables():
+        #    element = self._dom.project_var(element, var)
         self._invocation_outs[invocation] = element
         return element
 
@@ -257,11 +258,11 @@ class Module0CFAForwardAnalyzer(object):
             element = self._dom.op_load_variable(element,
                                                  parameter,
                                                  arg)
-        # remove vars of the invoker
-        for var in invoker.parameters:
-            element = self._dom.project_var(element, var)
-        for var in invoker.local_variables():
-            element = self._dom.project_var(element, var)
+        # DO NOT remove vars of the invoker
+        #for var in invoker.parameters:
+        #    element = self._dom.project_var(element, var)
+        #for var in invoker.local_variables():
+        #    element = self._dom.project_var(element, var)
         self._invocation_ins[invocation] = element
             
     def analyze(self,

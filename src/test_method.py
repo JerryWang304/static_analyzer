@@ -82,9 +82,13 @@ def test_5():
     # }
     # int main()
     # {
+    #   int c = UNDEF;
     #   int x = 11;
     #   int y = 42;
-    #   return summe(x, y);
+    #   if (c)
+    #     return summe(x, y);
+    #   else
+    #     return 100;
     # }
     mod1 = Module('module')
 
@@ -108,10 +112,13 @@ def test_5():
 
     # main
     # (1) create initial and final basic blocks
+    
+    vc = Variable('c', Integer(0, 1))
     vx = Variable('a', Integer(-1024, 1024))
     vy = Variable('b', Integer(-1024, 1024))
     vr = Variable('ret', Integer(-1024, 1024))
     main = Method('main', mod1)
+    main.add_local_variable(vc)
     main.add_local_variable(vx)
     main.add_local_variable(vy)
     main.add_local_variable(vr)
@@ -119,13 +126,26 @@ def test_5():
     
     main_1 = main.initial
     main_2 = main.final
+
+    main_b1 = BasicBlock(3)
+    main_b2 = BasicBlock(3)
+    
+    main.add_block(main_b1)
+    main.add_block(main_b2)
+    
     
     a1 = DirectAssignment(vx, [3])
     a2 = DirectAssignment(vy, [2])
     main_1.append_instruction(a1)
     main_1.append_instruction(a2)
+
+    a3 = DirectAssignment(vr, [100])
     i1 = mod1.create_invocation(main, summe, [vx, vy], vr)
-    main.set_edge(main_1, main_2, None, i1)
+    main_b2.append_instruction(a3)
+    main.set_edge(main_1, main_b1, ['==', vc, 1], None)
+    main.set_edge(main_1, main_b2, ['==', vc, 0], None)
+    main.set_edge(main_b1, main_2, None, i1)
+    main.set_edge(main_b2, main_2, None, None)
     
     mod1.initial = main
     mod1.final = main
@@ -135,6 +155,6 @@ def test_5():
     print m_analyzer._forward_sequence
     m_analyzer.analyze(dom.get_top(), dom.get_bot(), 5)
 
-test_4()
+#test_4()
 test_5()
 

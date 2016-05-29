@@ -98,7 +98,7 @@ class DecisionDiagramFactory(DomainFactory):
         second_var = second.get_variable()
         if first_var == second_var:
             true_cond = self._compare_diagrams(first.get_hi(),
-                                               second.get_lo(),
+                                               second.get_hi(),
                                                relation)
             if not true_cond:
                 return False
@@ -378,7 +378,6 @@ class DecisionDiagramFactory(DomainFactory):
                 var_a, var_b = target_var, source_var
             else:
                 var_a, var_b = source_var, target_var
-                
             constraint_diagram = self._mk(var_a,
                                           self._mk(var_b, self._top, self._bot),
                                           self._mk(var_b, self._bot, self._top))

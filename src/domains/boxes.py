@@ -213,14 +213,13 @@ class BoxDomainFactory(domain_factory.DomainFactory):
 
     def intersect(self, element1, element2):
         if element1.ranges is None:
-            return element1
+            return self._bot
         elif element2.ranges is None:
-            return element2
+            return self._bot
         result = BoxesElement({})
-        for variable in element1:
+        for variable in element1.ranges:
             result.ranges[variable] = element1.ranges[variable]
-
-        for variable in element2:
+        for variable in element2.ranges:
             result.ranges[variable] \
                 = self._intersect(self._interval(result, variable),
                                   self._interval(element2, variable))
@@ -277,7 +276,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
         return self._normalize(result)
 
     def op_load_variable(self, element, target_var, source_var):
-        if element is None:
+        if element.ranges is None:
             return self._bot
         result = self._copy(element)
         # TODO: what if constant not in range(variable)?
