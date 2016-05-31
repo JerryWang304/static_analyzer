@@ -77,7 +77,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
 
     def _normalize(self, element):
         if element.ranges is None:
-            return element
+            return self._bot
         result = self._copy(element)
         for variable in element.ranges:
             if element.ranges[variable] == self.variables[variable]:
@@ -86,7 +86,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
 
     def _copy(self, element):
         if element.ranges is None:
-            return element
+            return self._bot
         result = BoxesElement({})
         for variable in element.ranges:
             result.ranges[variable] = element.ranges[variable]
@@ -102,7 +102,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                             interval1,
                             interval2):
         if element.ranges is None:
-            return element
+            return self._bot
         result = self._copy(element)
         # todo: what if result not in range?
         (l1, r1) = interval1
@@ -121,7 +121,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             # i2 contains 1 integer
             if r2-l2 == 0 and r2 == 0:
                 print "Division by zero!"
-                return None
+                return self._bot
             elif r2-l2 == 0 and r1-l1 == 0:
                 (cl, cr) = (r1 % r2, r1 % r2)
             else:
@@ -224,7 +224,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                 = self._intersect(self._interval(result, variable),
                                   self._interval(element2, variable))
             if result.ranges[variable] is None:
-                return None
+                return self._bot
         return result
 
     def widen(self, element1, element2):
@@ -342,21 +342,21 @@ class BoxDomainFactory(domain_factory.DomainFactory):
                 return self._bot
         elif operator == '!=':
             if op1 == op2:
-                return None
+                return self._bot
             if (l1 - r1) == 0 and (l2-r2) == 0 and (l1 == l2):
                 return None
         new_i1 = None
         new_i2 = None
         if operator == '<=':
             if r2 < l1:
-                return None
+                return self._bot
             new_i1 = (l1, min(r1, r2))        
             new_i2 = (max(l1, l2), r2)
         elif operator == '<':
             if op1 == op2:
-                return None
+                return self._bot
             if r2 <= l1:
-                return None
+                return self._bot
             new_i1 = (l1, min(r1, r2-1))        
             new_i2 = (max(l1, l2+1), r2)
         else:

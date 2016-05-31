@@ -23,7 +23,6 @@ class MethodAnalyzer(object):
                 self._dom.add_integer_var(v,
                                           arg_type.min_value,
                                           arg_type.max_value)
-
     
     def __init__(self, method, dom, module_analyzer=None):
         self._method = method
@@ -151,10 +150,13 @@ class MethodAnalyzer(object):
                                                  else ins[neighbour])
                             if invocation and self._module_analyzer:
                                 # first: propagate inputs
-                                self._module_analyzer.perform_call(invocation,
-                                                                   neighbour_element)
-                                value_from_call = self._module_analyzer.perform_return(
-                                        invocation=invocation)
+                                self._module_analyzer.\
+                                    perform_call(invocation,
+                                                 neighbour_element)
+                                value_from_call = \
+                                                  self._module_analyzer.\
+                                                  perform_return(
+                                                      invocation=invocation)
                                 # get the return value
                                 new_input = self._dom.union(
                                     new_input,
@@ -162,6 +164,7 @@ class MethodAnalyzer(object):
                                 continue
                             # else: is there a condition?
                             condition = current_edge.condition
+                                
                             new_input = self._dom.union(
                                 new_input,
                                 (_apply_condition(
@@ -201,7 +204,6 @@ class MethodAnalyzer(object):
                             outs[element] = new_input
                             
         stabilize(sequence)
-        #return ins, outs
         self.in_values = ins
         self.out_values = outs
 
@@ -230,27 +232,36 @@ class Module0CFAForwardAnalyzer(object):
         invoker = invocation.invoking_method
         invoked = invocation.invoked_method
         element = self.outs[invoked]
+        # ASSUMPTION: "global" variables are not touched by routine
         if invoked.return_variable and invocation.target_var:
             # TODO: type check
-            # TODO: direct assignment in dom
             element = self._dom.op_load_variable(element,
-                                              invocation.target_var,
-                                              invoked.return_variable)
+                                                 invocation.target_var,
+                                                 invoked.return_variable)
         # remove vars of the invoked
         # TODO: seems strange, when we use *recursion*
-        #for var in invoked.parameters:
-        #    element = self._dom.project_var(element, var)
-        #for var in invoked.local_variables():
-        #    element = self._dom.project_var(element, var)
-        self._invocation_outs[invocation] = element
-        return element
+        for var in invoked.parameters:
+            element = self._dom.project_var(element, var)
+        for var in invoked.local_variables():
+            element = self._dom.project_var(element, var)
+
+        # remove parameters from out
+        before_invocation = self._invocation_ins[invocation]
+        for var in invoked.parameters:
+            before_invocation = self._dom.project_var(before_invocation, var)
+        composed_element = element # self._dom.intersect(element, before_invocation)
+        self._invocation_outs[invocation] = composed_element
+        return composed_element
 
     def perform_call(self,
                      invocation,
                      element):
         ''' Transform the element by assigning the arguments to
-        the parameter variables and projecting away all others.
-        ALSO UPDATES THE INVOCATION ELEMENT'''
+        the parameter variables and projecting away all others; caches
+        the computed input.'''
+        # ASSUMPTION / Calling Protocol:
+        # Parameters are assigned the given arguments
+
         invoker = invocation.invoking_method
         invoked = invocation.invoked_method
         index = 0
@@ -258,11 +269,6 @@ class Module0CFAForwardAnalyzer(object):
             element = self._dom.op_load_variable(element,
                                                  parameter,
                                                  arg)
-        # DO NOT remove vars of the invoker
-        #for var in invoker.parameters:
-        #    element = self._dom.project_var(element, var)
-        #for var in invoker.local_variables():
-        #    element = self._dom.project_var(element, var)
         self._invocation_ins[invocation] = element
             
     def analyze(self,
@@ -328,6 +334,7 @@ class Module0CFAForwardAnalyzer(object):
                         new_output,
                         old_output)
                     self.outs[method] = new_output
+                   
                             
         stabilize_forward(sequence)
         for out in self.outs:

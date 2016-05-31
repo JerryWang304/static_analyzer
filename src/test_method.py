@@ -123,22 +123,16 @@ def test_5():
     main.add_local_variable(vy)
     main.add_local_variable(vr)
     main.set_return_variable(vr)
-    
     main_1 = main.initial
     main_2 = main.final
-
     main_b1 = BasicBlock(3)
     main_b2 = BasicBlock(3)
-    
     main.add_block(main_b1)
     main.add_block(main_b2)
-    
-    
     a1 = DirectAssignment(vx, [3])
     a2 = DirectAssignment(vy, [2])
     main_1.append_instruction(a1)
     main_1.append_instruction(a2)
-
     a3 = DirectAssignment(vr, [100])
     i1 = mod1.create_invocation(main, summe, [vx, vy], vr)
     main_b2.append_instruction(a3)
@@ -146,6 +140,61 @@ def test_5():
     main.set_edge(main_1, main_b2, ['==', vc, 0], None)
     main.set_edge(main_b1, main_2, None, i1)
     main.set_edge(main_b2, main_2, None, None)
+    mod1.initial = main
+    mod1.final = main
+    inner_dom = boxes.BoxDomainFactory(-1024, 1024)
+    dom = decision_diagrams.DecisionDiagramFactory(inner_dom)
+    m_analyzer = analyzers.Module0CFAForwardAnalyzer(mod1, dom)
+    print m_analyzer._forward_sequence
+    m_analyzer.analyze(dom.get_top(), dom.get_bot(), 5)
+
+def test_6():
+    mod1 = Module('module')
+    
+    # summe
+    vx = Variable('x', Integer(-1024, 1024))
+    vy = Variable('y', Integer(-1024, 1024))
+    vr = Variable('ret', Integer(-1024, 1024))
+    a1 = DirectAssignment(vx, [0])
+    a2 = DirectAssignment(vy, [0])
+    a3 = DirectAssignment(vx, ['+', vx, 1])
+    a4 = DirectAssignment(vy, ['+', vy, 1])
+    a5 = DirectAssignment(vx, ['+', vx, 1])
+    a6 = DirectAssignment(vy, ['-', vy, 1])
+    
+    main = Method('main', mod1)
+    main.add_local_variable(vx)
+    main.add_local_variable(vy)
+    main.add_local_variable(vr)
+    main.set_return_variable(vr)
+
+    main_init = main.initial
+    main_final = main.final
+    main_while = BasicBlock('while')
+    main_if = BasicBlock('if')
+    main_b1 = BasicBlock('b1')
+    main_b2 = BasicBlock('b2')
+
+    main.add_block(main_while)
+    main.add_block(main_if)
+    main.add_block(main_b1)
+    main.add_block(main_b2)
+    
+    main.set_edge(main_init, main_while, None, None)
+    main.set_edge(main_while, main_if, ['<=', vx, 999], None)
+    main.set_edge(main_while, main_final, ['>=', vx, 1000], None)
+    main.set_edge(main_if, main_b1, ['<=', vx, 499], None)
+    main.set_edge(main_if, main_b2, ['>', vx, 499], None)
+    main.set_edge(main_b1, main_while, None , None)
+    main.set_edge(main_b2, main_while, None, None)  
+
+    main_init.append_instruction(a1)
+    main_init.append_instruction(a2)
+    main_b1.append_instruction(a3)
+    main_b1.append_instruction(a4)
+    main_b2.append_instruction(a5)
+    main_b2.append_instruction(a6)
+    
     
     mod1.initial = main
     mod1.final = main
@@ -155,6 +204,7 @@ def test_5():
     print m_analyzer._forward_sequence
     m_analyzer.analyze(dom.get_top(), dom.get_bot(), 5)
 
+    
 #test_4()
 test_5()
-
+test_6()
