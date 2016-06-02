@@ -358,7 +358,7 @@ class BoxDomainFactory(domain_factory.DomainFactory):
             if r2 <= l1:
                 return self._bot
             new_i1 = (l1, min(r1, r2-1))        
-            new_i2 = (max(l1, l2+1), r2)
+            new_i2 = (max(l1+1, l2), r2)
         else:
             print 'Unknown operator: %s ' % operator
         if new_i1 and left_var:

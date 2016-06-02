@@ -33,7 +33,6 @@ class DomainFactory(object):
     def to_string(self, element):
         ''' Return a string representation of "element". '''
         return
-    
 
     # Algebraic operations
     
