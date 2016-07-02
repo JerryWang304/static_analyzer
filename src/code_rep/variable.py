@@ -12,7 +12,7 @@ class Variable(object):
 
     def __init__(self, id, type, parent=None):
         self.id = id
-        self.type = type
+        self._type = type
         self._parent = parent
 
     def set_parent(self, parent):
@@ -26,3 +26,6 @@ class Variable(object):
 
     def get_parent(self):
         return self._parent
+
+    def get_type(self):
+        return self._type

@@ -49,21 +49,21 @@ class BasicBlock(object):
     
     def __init__(self, id):
         self.id = id
-        self.instructions = []
+        self._instructions = []
         self._parent = None # set by block
         
     def __str__(self):
         result = 'BasicBlock(%s)[ ' % self.id
-        for instruction in self.instructions:
+        for instruction in self.instructions():
             result += '%s; ' % instruction
         result += ' ]'
         return result
 
     def instructions(self):
-        return self.instructions
+        return self._instructions
 
     def append_instruction(self, instruction):
-        self.instructions.append(instruction)
+        self._instructions.append(instruction)
 
     def set_parent(self, parent):
         self._parent = parent
@@ -104,7 +104,7 @@ class Method(object):
         self.add_block(final_block)
         self.initial = init_block
         self.final = final_block
-        self.parameters = []
+        self._parameters = []
         self.return_variable = None
         self._local_variables = []
         
@@ -112,7 +112,7 @@ class Method(object):
         return self.id
         result = '%s::%s:\n' % (self.module.id, self.id)
         result += 'Parameter: '
-        for parameter in self.parameters:
+        for parameter in self._parameters:
             result += '%s ' % parameter
         result += '\n'
         result += 'Return value: %s\n' % self.return_variable
@@ -137,7 +137,7 @@ class Method(object):
 
     def blocks(self):
         ''' Get a list of all basic blocks. '''
-        return self._blocks[:]
+        return self._blocks
             
     def set_edge(self, from_block, to_block,
                  condition=None, invocation=None):
@@ -174,7 +174,7 @@ class Method(object):
         return v
 
     def add_parameter(self, v):
-        self.parameters.append(v)
+        self._parameters.append(v)
         v.set_parent(self)
         return v
 
@@ -187,5 +187,16 @@ class Method(object):
         except:
             return None
 
+    def parameters(self):
+        return self._parameters
+    
     def local_variables(self):
-        return self._local_variables[:] 
+        return self._local_variables 
+
+    def allocations(self):
+        result = []
+        for block in self._blocks:
+            for instruction in block.instructions():
+                if isinstance(instruction, instr.Alloc):
+                    result.append(instruction)
+        return result

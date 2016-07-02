@@ -15,7 +15,7 @@ from code_rep.type_system import *
 class MethodAnalyzer(object):
 
     def _add_var(self, v):
-        arg_type = v.type
+        arg_type = v.get_type()
         if isinstance(arg_type, Integer):
             if arg_type.is_bool_type():
                 self._dom.add_bool_var(v)
@@ -36,7 +36,7 @@ class MethodAnalyzer(object):
             reverse=True)
         self.in_values, self.out_values = {}, {}
         # add all variables
-        for parameter in method.parameters:
+        for parameter in method.parameters():
             self._add_var(parameter)
         if method.return_variable:
             self._add_var(method.return_variable)
@@ -72,29 +72,22 @@ class MethodAnalyzer(object):
                 
         # TODO: make this more extensible!
         def apply_instruction(instruction, value):
-
-            def apply_direct_assignment():
-                target = instruction.target
-                rhs = instruction.rhs
-                # case distinction:
-                if len(rhs) == 1:
-                    # constant or variable
-                    op1 = rhs[0]
-                    return self._dom.op_binary(value,
-                                               '+',
-                                               target,
-                                               op1,
-                                               0)
-                elif len(rhs) == 3:
-                    (operator, op1, op2) = rhs
-                    return self._dom.op_binary(value,
-                                               operator,
-                                               target,
-                                               op1,
-                                               op2)
-
-            if isinstance(instruction, DirectAssignment):
-                return apply_direct_assignment()
+            if isinstance(instruction, DirectVariableAssignment):
+                return self._dom.op_load_variable(value,
+                                                  instruction.target,
+                                                  instruction.source)
+            elif isinstance(instruction, ConstantAssignment):
+                return self._dom.op_load_constant(value,
+                                                  instruction.target,
+                                                  instruction.source)
+            elif isinstance(instruction, BinaryOpAssignment):
+                return self._dom.op_binary(value,
+                                           instruction.operator,
+                                           instruction.target,
+                                           instruction.operand1,
+                                           instruction.operand2)
+            elif isinstance(instruction, UnaryOpAssignment):
+                pass
             elif isinstance(instruction, Alloc):
                 pass #TODO
             elif isinstance(instruction, Load):
@@ -175,12 +168,12 @@ class MethodAnalyzer(object):
                         # new input computed, now: compute the output
                         new_output = new_input
                         if analyze_forward:
-                            for instruction in element.instructions:
+                            for instruction in element.instructions():
                                 new_output = apply_instruction(
                                     instruction,
                                     new_output)
                         else:
-                            for instruction in reversed(element.instructions):
+                            for instruction in reversed(element.instructions()):
                                 new_output = apply_instruction(
                                     instruction,
                                     new_output)
@@ -240,14 +233,14 @@ class Module0CFAForwardAnalyzer(object):
                                                  invoked.return_variable)
         # remove vars of the invoked
         # TODO: seems strange, when we use *recursion*
-        for var in invoked.parameters:
+        for var in invoked.parameters():
             element = self._dom.project_var(element, var)
         for var in invoked.local_variables():
             element = self._dom.project_var(element, var)
 
         # remove parameters from out
         before_invocation = self._invocation_ins[invocation]
-        for var in invoked.parameters:
+        for var in invoked.parameters():
             before_invocation = self._dom.project_var(before_invocation, var)
         composed_element = element # self._dom.intersect(element, before_invocation)
         self._invocation_outs[invocation] = composed_element
@@ -265,7 +258,7 @@ class Module0CFAForwardAnalyzer(object):
         invoker = invocation.invoking_method
         invoked = invocation.invoked_method
         index = 0
-        for (arg, parameter) in zip(invocation.arguments, invoked.parameters):
+        for (arg, parameter) in zip(invocation.arguments, invoked.parameters()):
             element = self._dom.op_load_variable(element,
                                                  parameter,
                                                  arg)
@@ -334,7 +327,6 @@ class Module0CFAForwardAnalyzer(object):
                         new_output,
                         old_output)
                     self.outs[method] = new_output
-                   
                             
         stabilize_forward(sequence)
         for out in self.outs:

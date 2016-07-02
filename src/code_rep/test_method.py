@@ -47,7 +47,7 @@ print mod1.callgraph_to_string()
 
 prog = Module('main')
 
-b1 = BasicBlock(1, [instr.DirectAssignment('x', [0]),
+b1 = BasicBlock(1, [instr.ConstantAssignment('x', 0),
                     instr.Alloc('y', 'int', 100)])
 b2 = BasicBlock(2, [instr.Load('z', 'x')])
 b3 = BasicBlock(3, [instr.Store('p', 'x')])
